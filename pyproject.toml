@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "smart"
+description = "API for smart home"
+readme = "README.md"
+license = {text = "MIT License"}
+authors = [
+    {name = "Conor MacBride", email = "conor@macbride.me"},
+]
+maintainers = [
+    {name = "Conor MacBride", email = "conor@macbride.me"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python",
+]
+dynamic = ["version"]
+requires-python = ">= 3.11"
+dependencies = [
+    "fastapi",
+    "pydantic-settings",
+    "requests",
+    "uvicorn[standard]",
+]
+
+[tool.hatch.build.hooks.vcs]
+version-file = "smart/_version.py"
+
+[tool.hatch.version]
+source = "vcs"
