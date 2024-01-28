@@ -1,4 +1,5 @@
 from functools import cached_property
+from pathlib import Path
 
 import requests
 
@@ -10,11 +11,12 @@ class Presence:
 
 
 class TadoClient:
-    def __init__(self, username, password, env=None):
+    def __init__(self, username, password, data, env=None):
         if env is None:
             env = "https://my.tado.com/webapp/env.js"
         self.username = username
         self.password = password
+        self.data = Path(data)
         self.env = env
         self.oauth_endpoint = self.get_env("apiEndpoint")
         self.client_id = self.get_env("clientId")
@@ -59,16 +61,20 @@ class TadoClient:
         r.raise_for_status()
         return r.json()["access_token"]
 
+    @property
+    def auth(self):
+        return {"Authorization": f"Bearer {self.access_token}"}
+
     @cached_property
     def home_id(self):
-        r = requests.get(self.v1_endpoint + "/me", headers={"Authorization": f"Bearer {self.access_token}"})
+        r = requests.get(self.v1_endpoint + "/me", headers={**self.auth})
         r.raise_for_status()
         return r.json()["homeId"]
 
     @cached_property
     def zones(self):
         zones = f"{self.v2_endpoint}/homes/{self.home_id}/zones"
-        r = requests.get(zones, headers={"Authorization": f"Bearer {self.access_token}"})
+        r = requests.get(zones, headers={**self.auth})
         r.raise_for_status()
         return r.json()
 
@@ -77,7 +83,7 @@ class TadoClient:
         data = {
             "homePresence": presence,
         }
-        r = requests.put(url=url, json=data, headers={"Authorization": f"Bearer {self.access_token}"})
+        r = requests.put(url=url, json=data, headers={**self.auth})
         r.raise_for_status()
 
     def set_home(self):
@@ -88,6 +94,6 @@ class TadoClient:
 
     def get_presence(self):
         url = f"{self.v2_endpoint}/homes/{self.home_id}/state"
-        r = requests.get(url=url, headers={"Authorization": f"Bearer {self.access_token}"})
+        r = requests.get(url=url, headers={**self.auth})
         r.raise_for_status()
         return r.json().get("presence", None)
