@@ -8,7 +8,9 @@ TIME_FMT = re.compile(_TIME_FMT)
 DYNAMIC_TIME_FMT = re.compile(rf"{{([A-Za-z0-9_]+)(\|([+-])({_TIME_FMT}))?}}")
 
 
-def create_block(start: str, end: str, temperature: float | int) -> Mapping | List[Mapping]:
+def create_block(
+    start: str, end: str, temperature: float | int
+) -> Mapping | List[Mapping]:
     # Split blocks at midnight
     if not (start == "00:00" or end == "00:00"):
         start_dt = datetime.datetime.strptime(start, "%H:%M")
@@ -96,7 +98,7 @@ def load_schedule(config: Mapping, /, **metadata) -> MutableMapping:
             if idx + 1 >= n_blocks:
                 end = schedule[0]["time"]
             else:
-                end = schedule[idx+1]["time"]
+                end = schedule[idx + 1]["time"]
             temperature = schedule[idx]["temperature"]
             block = create_block(start, end, temperature)
             if isinstance(block, list):  # split at midnight

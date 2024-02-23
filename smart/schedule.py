@@ -43,7 +43,10 @@ class ZoneSchedule:
 
     def push(self) -> None:
         """Set the current schedule."""
-        url = self.endpoint + f"/timetables/{self.active_timetable}/blocks/MONDAY_TO_SUNDAY"
+        url = (
+            self.endpoint
+            + f"/timetables/{self.active_timetable}/blocks/MONDAY_TO_SUNDAY"
+        )
         r = requests.put(url=url, json=self.json, headers={**self.client.auth})
         r.raise_for_status()
 
@@ -57,8 +60,7 @@ class Schedule:
     def __init__(self, client: TadoClient):
         self.client: TadoClient = client
         self.zone_schedules: List[ZoneSchedule] = [
-            ZoneSchedule(client=client, zone=zone)
-            for zone in client.zones
+            ZoneSchedule(client=client, zone=zone) for zone in client.zones
         ]
         self.current_schedule: MutableMapping = {}
         self.current_kwargs: MutableMapping = {}
@@ -83,7 +85,9 @@ class Schedule:
         self.current_kwargs = kwargs
 
     @classmethod
-    def get(cls, client: TadoClient, name: str = None, load: bool = True, **kwargs) -> MutableMapping:
+    def get(
+        cls, client: TadoClient, name: str = None, load: bool = True, **kwargs
+    ) -> MutableMapping:
         """Return schedules."""
         if name is None and kwargs:
             raise ValueError("Cannot pass `kwargs` to `get` when `name` not specified.")
