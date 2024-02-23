@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "smart"
-description = "API for smart home"
+description = "An opinionated smart home API that extends tadoº smart thermostat scheduling abilities"
 readme = "README.md"
 license = {text = "MIT License"}
 authors = [
