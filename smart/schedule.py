@@ -3,8 +3,6 @@ import tomllib
 from functools import cached_property
 from typing import MutableMapping, List, Mapping, Tuple
 
-import requests
-
 from smart.tado import TadoClient
 from smart.schedule_utils import load_schedule
 
@@ -19,7 +17,7 @@ class ZoneSchedule:
     @cached_property
     def active_timetable(self) -> int:
         url = self.endpoint + "/activeTimetable"
-        r = requests.get(url=url, headers={**self.client.auth})
+        r = self.client.requests_session.get(url=url, headers={**self.client.auth})
         r.raise_for_status()
         data = r.json()
         if data["type"] != "ONE_DAY":
@@ -37,7 +35,7 @@ class ZoneSchedule:
     def pull(self) -> None:
         """Get the current schedule."""
         url = self.endpoint + f"/timetables/{self.active_timetable}/blocks"
-        r = requests.get(url=url, headers={**self.client.auth})
+        r = self.client.requests_session.get(url=url, headers={**self.client.auth})
         r.raise_for_status()
         self.json = r.json()
 
@@ -47,7 +45,9 @@ class ZoneSchedule:
             self.endpoint
             + f"/timetables/{self.active_timetable}/blocks/MONDAY_TO_SUNDAY"
         )
-        r = requests.put(url=url, json=self.json, headers={**self.client.auth})
+        r = self.client.requests_session.put(
+            url=url, json=self.json, headers={**self.client.auth}
+        )
         r.raise_for_status()
 
     def set(self, schedule: Mapping) -> None:

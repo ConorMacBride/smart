@@ -11,9 +11,10 @@ class Presence:
 
 
 class TadoClient:
-    def __init__(self, username, password, data, env=None):
+    def __init__(self, username, password, data, env=None, requests_session=None):
         if env is None:
             env = "https://my.tado.com/webapp/env.js"
+        self.requests_session = requests_session or requests.Session()
         self.username = username
         self.password = password
         self.data = Path(data)
@@ -26,7 +27,7 @@ class TadoClient:
 
     @cached_property
     def _env(self):
-        env = requests.get(url=self.env)
+        env = self.requests_session.get(url=self.env)
         return env.text
 
     def get_env(self, key, value=None):
@@ -47,8 +48,8 @@ class TadoClient:
 
     @cached_property
     def access_token(self):
-        r = requests.post(
-            url=self.oauth_endpoint + "/token",
+        r = self.requests_session.post(
+            self.oauth_endpoint + "/token",
             data={
                 "client_id": self.client_id,
                 "grant_type": "password",
@@ -67,14 +68,14 @@ class TadoClient:
 
     @cached_property
     def home_id(self):
-        r = requests.get(self.v1_endpoint + "/me", headers={**self.auth})
+        r = self.requests_session.get(self.v1_endpoint + "/me", headers={**self.auth})
         r.raise_for_status()
         return r.json()["homeId"]
 
     @cached_property
     def zones(self):
         zones = f"{self.v2_endpoint}/homes/{self.home_id}/zones"
-        r = requests.get(zones, headers={**self.auth})
+        r = self.requests_session.get(zones, headers={**self.auth})
         r.raise_for_status()
         return r.json()
 
@@ -83,7 +84,7 @@ class TadoClient:
         data = {
             "homePresence": presence,
         }
-        r = requests.put(url=url, json=data, headers={**self.auth})
+        r = self.requests_session.put(url, json=data, headers={**self.auth})
         r.raise_for_status()
 
     def set_home(self):
@@ -94,6 +95,6 @@ class TadoClient:
 
     def get_presence(self):
         url = f"{self.v2_endpoint}/homes/{self.home_id}/state"
-        r = requests.get(url=url, headers={**self.auth})
+        r = self.requests_session.get(url, headers={**self.auth})
         r.raise_for_status()
         return r.json().get("presence", None)
