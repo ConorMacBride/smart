@@ -75,7 +75,7 @@ def _parse_time(time: str) -> str:
     return m[0]
 
 
-def parse_dynamic_times(schedule: MutableMapping, /, **kwargs) -> None:
+def parse_dynamic_times(schedule: List[MutableMapping], /, **kwargs) -> None:
     for block in schedule:
         time = block["time"]
         if time.startswith("{"):
