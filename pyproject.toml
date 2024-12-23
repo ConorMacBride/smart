@@ -32,6 +32,16 @@ dev = [
     "pytest-cov",
 ]
 
+[tool.coverage.run]
+branch = true
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "except ImportError",
+]
+fail_under = 100
+
 [tool.hatch.build.hooks.vcs]
 version-file = "smart/_version.py"
 

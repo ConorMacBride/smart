@@ -43,7 +43,7 @@ class TadoClient:
             raise ValueError(f"`{key}` not in environment.")
         elif len(values) == 1:
             return values[0].split("'")[-2]
-        elif len(values) > 1:
+        else:
             raise ValueError(f"Multiple `{key}` values found in environment.")
 
     @cached_property

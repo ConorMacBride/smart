@@ -1,0 +1,54 @@
+[metadata]
+name = "Schedule 1"
+
+[[dining_room]]
+time = "23:15"
+temperature = 0
+
+[[dining_room]]
+time = "06:30"
+temperature = 21
+
+[[dining_room]]
+time = "10:20"
+temperature = 17.5
+
+[[dining_room]]
+time = "17:00"
+temperature = 22.5
+
+[[bathroom]]
+time = "23:30"
+temperature = 0
+
+[[bathroom]]
+time = "04:36"
+temperature = 10
+
+[[bathroom]]
+time = "07:01"
+temperature = 14.4
+
+[[bathroom]]
+time = "16:00"
+temperature = 14.5
+
+[[living_room]]
+time = "00:00"
+temperature = 16.1
+
+[[living_room]]
+time = "08:00"
+temperature = 15
+
+[[living_room]]
+time = "09:30"
+temperature = 45
+
+[[living_room]]
+time = "10:00"
+temperature = 32.7
+
+[[living_room]]
+time = "22:00"
+temperature = 20

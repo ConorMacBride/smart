@@ -3,3 +3,4 @@ data/
 /smart/_version.py
 .idea
 .env
+.coverage

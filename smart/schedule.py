@@ -113,6 +113,8 @@ class Schedule:
                 else:
                     schedule_details = variant_metadata
                 schedules[variant_name] = schedule_details
+        if not schedules:
+            raise ValueError("No schedules found.")
         return schedules
 
     @property
