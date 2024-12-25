@@ -76,8 +76,11 @@ class Schedule:
             schedule.push()
         self.active_schedule = self.current_schedule, self.current_variables
 
-    def set(self, name: str, /, **kwargs) -> None:
+    def set(self, name: str = None, /, **kwargs) -> None:
         """Load a schedule."""
+        if name is None:
+            name, variables = self.active_schedule
+            kwargs = {**variables, **kwargs}
         all_schedules = self.get(client=self.client, name=name, **kwargs)
         for schedule in self.zone_schedules:
             schedule.set(all_schedules)

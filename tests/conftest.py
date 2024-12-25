@@ -1,3 +1,4 @@
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch, PropertyMock
 
@@ -72,4 +73,5 @@ def schedule():
         ]
         tado_client = Mock()
         tado_client.zones = zones
+        tado_client.data = Path(tempfile.mkdtemp())
         yield Schedule(tado_client)

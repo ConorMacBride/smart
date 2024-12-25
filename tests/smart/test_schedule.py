@@ -122,6 +122,24 @@ class TestSchedule:
         assert schedule.current_variables == {"var1": "07:00"}
 
     @setup_data
+    def test_set_current_schedule(self, tmp_path, schedule):
+        all_schedules = Schedule.get(
+            client=schedule.client, name="Schedule 3.1", var1="08:00"
+        )
+        active_schedule = schedule.client.data / "active_schedule.json"
+        active_schedule.write_text(
+            '{"schedule": "Schedule 3.1", "variables": {"var1": "08:00"}}'
+        )
+
+        schedule.set()
+
+        assert len(schedule.zone_schedules) == 3
+        for zone in schedule.zone_schedules:
+            zone.set.assert_called_once_with(all_schedules)
+        assert schedule.current_schedule == "Schedule 3.1"
+        assert schedule.current_variables == {"var1": "08:00"}
+
+    @setup_data
     def test_get(self, tmp_path, schedule):
         schedule_1 = Schedule.get(client=schedule.client, name="Schedule 1")
         assert len(schedule_1["dining_room"]) == 5
