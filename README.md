@@ -131,7 +131,7 @@ curl \
   -H "x-api-key: yourAPIkey" \
   -H "Content-Type: application/json" \
   --request POST \
-  --data '{"name": "Dynamic Schedule", "kwargs": {"wake": "07:00", "sleep": "23:00"}}' \
+  --data '{"name": "Dynamic Schedule", "variables": {"wake": "07:00", "sleep": "23:00"}}' \
   http://127.0.0.1:8000/tado/schedule/set
 ```
 
