@@ -71,7 +71,7 @@ async def away(api_key: str = Security(get_api_key)):
     client = get_client()
     client.set_away()
     if client.get_presence() != Presence.AWAY:
-        raise ValueError(500, "Failed to update presence.")
+        raise HTTPException(500, "Failed to update presence.")
 
 
 @app.get("/tado/schedule/reset")

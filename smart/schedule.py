@@ -129,5 +129,5 @@ class Schedule:
         schedule, kwargs = value
         data = {"schedule": schedule, "kwargs": kwargs}
         path = self.client.data / "active_schedule.json"
-        with open(path, "w") as fp:
+        with path.open("w") as fp:
             json.dump(data, fp)
