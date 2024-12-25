@@ -28,8 +28,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "httpx",
     "pytest",
     "pytest-cov",
+    "responses",
 ]
 
 [tool.coverage.run]
@@ -39,6 +41,7 @@ branch = true
 exclude_also = [
     "if TYPE_CHECKING:",
     "except ImportError",
+    "return Settings()",
 ]
 fail_under = 100
 
