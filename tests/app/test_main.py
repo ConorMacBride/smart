@@ -298,7 +298,7 @@ class TestScheduleActive(CommonTests):
     @responses.activate(assert_all_requests_are_fired=True)
     def test_get(self):
         (Path(get_test_settings().tado_data) / "active_schedule.json").write_text(
-            '{"schedule": "My Schedule", "kwargs": {"var1": "value1"}}'
+            '{"schedule": "My Schedule", "variables": {"var1": "value1"}}'
         )
         responses.add(**auth_resp)
         responses.add(**token_resp)
@@ -308,7 +308,7 @@ class TestScheduleActive(CommonTests):
         assert response.status_code == 200
         assert response.json() == {
             "schedule": "My Schedule",
-            "kwargs": {"var1": "value1"},
+            "variables": {"var1": "value1"},
         }
         assert response.headers["content-type"] == "application/json"
 
@@ -422,6 +422,6 @@ class TestScheduleSet(CommonTests):
         )
         response = client.post(
             "/tado/schedule/set",
-            json={"name": "Schedule 3.1", "kwargs": {"var2": "11:00"}},
+            json={"name": "Schedule 3.1", "variables": {"var2": "11:00"}},
         )
         assert response.status_code == 200

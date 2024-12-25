@@ -3,7 +3,7 @@ from typing import Optional, Mapping
 
 from fastapi import FastAPI, Security, HTTPException, status
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from smart import __version__
@@ -87,10 +87,10 @@ async def reset(api_key: str = Security(get_api_key)):
 async def active(api_key: str = Security(get_api_key)):
     client = get_client()
     schedule = Schedule(client=client)
-    active_schedule, kwargs = schedule.active_schedule
+    active_schedule, variables = schedule.active_schedule
     return {
         "schedule": active_schedule,
-        "kwargs": kwargs,
+        "variables": variables,
     }
 
 
@@ -102,12 +102,12 @@ async def all_schedules(api_key: str = Security(get_api_key)):
 
 class ScheduleConfig(BaseModel):
     name: str | None = None
-    kwargs: Mapping = {}
+    variables: Mapping = Field(default_factory=dict)
 
 
 @app.post("/tado/schedule/set")
 async def set_schedule(config: ScheduleConfig, api_key: str = Security(get_api_key)):
     client = get_client()
     schedule = Schedule(client=client)
-    schedule.set(config.name, **config.kwargs)
+    schedule.set(config.name, **config.variables)
     schedule.push()

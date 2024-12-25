@@ -63,7 +63,7 @@ class Schedule:
             ZoneSchedule(client=client, zone=zone) for zone in client.zones
         ]
         self.current_schedule: MutableMapping = {}
-        self.current_kwargs: MutableMapping = {}
+        self.current_variables: MutableMapping = {}
 
     def pull(self) -> None:
         """Get the current schedule."""
@@ -74,7 +74,7 @@ class Schedule:
         """Set the current schedule."""
         for schedule in self.zone_schedules:
             schedule.push()
-        self.active_schedule = self.current_schedule, self.current_kwargs
+        self.active_schedule = self.current_schedule, self.current_variables
 
     def set(self, name: str, /, **kwargs) -> None:
         """Load a schedule."""
@@ -82,7 +82,7 @@ class Schedule:
         for schedule in self.zone_schedules:
             schedule.set(all_schedules)
         self.current_schedule = name
-        self.current_kwargs = kwargs
+        self.current_variables = kwargs
 
     @classmethod
     def get(
@@ -122,12 +122,12 @@ class Schedule:
         path = self.client.data / "active_schedule.json"
         with open(path) as fp:
             data = json.load(fp)
-        return data["schedule"], data["kwargs"]
+        return data["schedule"], data["variables"]
 
     @active_schedule.setter
     def active_schedule(self, value: Tuple[str, MutableMapping]) -> None:
-        schedule, kwargs = value
-        data = {"schedule": schedule, "kwargs": kwargs}
+        schedule, variables = value
+        data = {"schedule": schedule, "variables": variables}
         path = self.client.data / "active_schedule.json"
         with path.open("w") as fp:
             json.dump(data, fp)

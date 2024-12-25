@@ -79,7 +79,7 @@ class TestSchedule:
 
     def test_push(self, tmp_path, schedule):
         schedule.current_schedule = "current-schedule"
-        schedule.current_kwargs = {"varA": "val1", "varB": 2}
+        schedule.current_variables = {"varA": "val1", "varB": 2}
         schedule.client.data = tmp_path
 
         schedule.push()
@@ -105,10 +105,10 @@ class TestSchedule:
         for zone in schedule.zone_schedules:
             zone.set.assert_called_once_with(all_schedules)
         assert schedule.current_schedule == "Schedule 1"
-        assert schedule.current_kwargs == {}
+        assert schedule.current_variables == {}
 
     @setup_data
-    def test_set_kwargs(self, tmp_path, schedule):
+    def test_set_variables(self, tmp_path, schedule):
         all_schedules = Schedule.get(
             client=schedule.client, name="Schedule 2", var1="07:00"
         )
@@ -119,7 +119,7 @@ class TestSchedule:
         for zone in schedule.zone_schedules:
             zone.set.assert_called_once_with(all_schedules)
         assert schedule.current_schedule == "Schedule 2"
-        assert schedule.current_kwargs == {"var1": "07:00"}
+        assert schedule.current_variables == {"var1": "07:00"}
 
     @setup_data
     def test_get(self, tmp_path, schedule):
