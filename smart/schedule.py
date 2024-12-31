@@ -107,58 +107,62 @@ class Schedule:
             raise ValueError("Cannot pass `kwargs` to `get` when `name` not specified.")
 
         global_variables = Schedule.variables(client)
-
         schedules = {}
         path = client.data / "schedules"
+
         for config in path.glob("*.toml"):
             with open(config, "rb") as fp:
                 schedule = tomllib.load(fp)
             metadata = schedule.pop("metadata", {})
-            variants = schedule.pop("variant", [])
-            variants.insert(0, metadata)
+            variants = [metadata] + schedule.pop("variant", [])
+
             for variant in variants:
-                variant_metadata = metadata | variant
+                variant_metadata = {**metadata, **variant}
                 variant_name = variant_metadata.pop("name")
                 variant_variables = (
                     variables.copy() if variables else ScheduleVariables()
                 )
-                variant_metadata_to_update = {
-                    k: v
-                    for k, v in variant_metadata.items()
-                    if k not in variant_variables
+
+                variant_variables.add_default(
+                    **{
+                        k: v
+                        for k, v in variant_metadata.items()
+                        if k not in variant_variables
+                    }
+                )
+                variant_variables.add_global(
+                    **{
+                        k: v
+                        for k, v in global_variables.items()
+                        if k in variant_metadata and k not in variant_variables.globals
+                    }
+                )
+                variant_variables.add_kwarg(
+                    **{k: v for k, v in kwargs.items() if k in variant_metadata}
+                )
+
+                variables_values = {
+                    k: v["value"] for k, v in variant_variables.data.items()
                 }
-                variant_variables.add_default(**variant_metadata_to_update)
-                global_variables_in_use = {
-                    k: v for k, v in global_variables.items() if k in variant_metadata
-                }
-                global_variables_to_update = {
-                    k: v
-                    for k, v in global_variables_in_use.items()
-                    if k not in variant_variables.globals
-                }
-                kwargs_in_use = {
-                    k: v for k, v in kwargs.items() if k in variant_metadata
-                }
-                variant_variables.add_global(**global_variables_to_update)
-                variant_variables.add_kwarg(**kwargs_in_use)
-                variant_variables = variant_variables.data
-                variables_values = {k: v["value"] for k, v in variant_variables.items()}
+
                 if name:
                     if name == variant_name:
                         if load:
                             return load_schedule(
                                 schedule, **variables_values
-                            ), variant_variables
-                        return variant_variables
+                            ), variant_variables.data
+                        return variant_variables.data
                     continue
-                if load:
-                    schedule_details = (
+
+                schedules[variant_name] = (
+                    (
                         load_schedule(schedule, **variables_values),
-                        variant_variables,
+                        variant_variables.data,
                     )
-                else:
-                    schedule_details = variant_variables
-                schedules[variant_name] = schedule_details
+                    if load
+                    else variant_variables.data
+                )
+
         if not schedules:
             raise ValueError("No schedules found.")
         return schedules
