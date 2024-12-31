@@ -1,6 +1,7 @@
 import copy
 import re
 import datetime
+from collections import UserDict
 from typing import Mapping, List, MutableMapping
 
 _TIME_FMT = r"[0-9]{2}:[0-9]{2}"
@@ -108,3 +109,59 @@ def load_schedule(config: Mapping, /, **metadata) -> MutableMapping:
             else:
                 schedules[zone].append(block)
     return schedules
+
+
+class ScheduleVariables(UserDict):
+    DEFAULT = "default"
+    GLOBAL = "global"
+    KWARG = "kwarg"
+
+    def __getitem__(self, key):
+        if key in self.data:
+            return self.data[key]["value"]
+        raise KeyError(key)
+
+    def __setitem__(self, key, item):
+        if not (isinstance(item, dict) and "value" in item and "type" in item):
+            raise NotImplementedError(
+                "Use `add_default`, `add_global`, or `add_kwarg`."
+            )
+        self.data[key] = item
+
+    def __eq__(self, other: MutableMapping):
+        a = {k: v["value"] for k, v in self.data.items()}
+        if isinstance(other, ScheduleVariables):
+            b = {k: v["value"] for k, v in other.data.items()}
+            return a == b
+        if a == other:
+            return True
+        return self.data == other
+
+    def copy(self):
+        return ScheduleVariables(copy.deepcopy(self.data))
+
+    @property
+    def globals(self):
+        return {
+            k for k, v in self.data.items() if v["type"] == ScheduleVariables.GLOBAL
+        }
+
+    def _existing_type(self, key):
+        return self.data.get(key, {}).get("type", None)
+
+    def add_default(self, **kwargs):
+        for k, v in kwargs.items():
+            if self._existing_type(k) not in {
+                ScheduleVariables.GLOBAL,
+                ScheduleVariables.KWARG,
+            }:
+                self.data[k] = {"value": v, "type": ScheduleVariables.DEFAULT}
+
+    def add_global(self, **kwargs):
+        for k, v in kwargs.items():
+            if self._existing_type(k) != ScheduleVariables.KWARG:
+                self.data[k] = {"value": v, "type": ScheduleVariables.GLOBAL}
+
+    def add_kwarg(self, **kwargs):
+        for k, v in kwargs.items():
+            self.data[k] = {"value": v, "type": ScheduleVariables.KWARG}

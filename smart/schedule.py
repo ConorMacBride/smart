@@ -1,10 +1,10 @@
 import json
 import tomllib
 from functools import cached_property
-from typing import MutableMapping, List, Mapping, Tuple
+from typing import MutableMapping, List, Mapping, Tuple, Dict, Union
 
 from smart.tado import TadoClient
-from smart.schedule_utils import load_schedule
+from smart.schedule_utils import load_schedule, ScheduleVariables
 
 
 class ZoneSchedule:
@@ -76,24 +76,38 @@ class Schedule:
             schedule.push()
         self.active_schedule = self.current_schedule, self.current_variables
 
-    def set(self, name: str = None, /, **kwargs) -> None:
+    def set(self, name: str = None, /, refresh: bool = False, **kwargs) -> None:
         """Load a schedule."""
+        variables = ScheduleVariables()
         if name is None:
             name, variables = self.active_schedule
-            kwargs = {**variables, **kwargs}
-        all_schedules = self.get(client=self.client, name=name, **kwargs)
+            if refresh:  # only keep kwarg variables
+                variables = {k: v for k, v in variables.items() if v["type"] == "kwarg"}
+            variables = ScheduleVariables(variables)
+        variables.add_kwarg(**kwargs)
+        selected_schedule, schedule_metadata = self.get(
+            client=self.client, name=name, variables=variables
+        )
         for schedule in self.zone_schedules:
-            schedule.set(all_schedules)
+            schedule.set(selected_schedule)
         self.current_schedule = name
-        self.current_variables = kwargs
+        self.current_variables = schedule_metadata
 
     @classmethod
     def get(
-        cls, client: TadoClient, name: str = None, load: bool = True, **kwargs
-    ) -> MutableMapping:
+        cls,
+        client: TadoClient,
+        name: str = None,
+        load: bool = True,
+        variables: ScheduleVariables = None,
+        **kwargs,
+    ) -> Union[MutableMapping, Tuple[MutableMapping, Dict[str, MutableMapping]]]:
         """Return schedules."""
         if name is None and kwargs:
             raise ValueError("Cannot pass `kwargs` to `get` when `name` not specified.")
+
+        global_variables = Schedule.variables(client)
+
         schedules = {}
         path = client.data / "schedules"
         for config in path.glob("*.toml"):
@@ -103,18 +117,47 @@ class Schedule:
             variants = schedule.pop("variant", [])
             variants.insert(0, metadata)
             for variant in variants:
-                variant_metadata = metadata | variant | kwargs
+                variant_metadata = metadata | variant
                 variant_name = variant_metadata.pop("name")
+                variant_variables = (
+                    variables.copy() if variables else ScheduleVariables()
+                )
+                variant_metadata_to_update = {
+                    k: v
+                    for k, v in variant_metadata.items()
+                    if k not in variant_variables
+                }
+                variant_variables.add_default(**variant_metadata_to_update)
+                global_variables_in_use = {
+                    k: v for k, v in global_variables.items() if k in variant_metadata
+                }
+                global_variables_to_update = {
+                    k: v
+                    for k, v in global_variables_in_use.items()
+                    if k not in variant_variables.globals
+                }
+                kwargs_in_use = {
+                    k: v for k, v in kwargs.items() if k in variant_metadata
+                }
+                variant_variables.add_global(**global_variables_to_update)
+                variant_variables.add_kwarg(**kwargs_in_use)
+                variant_variables = variant_variables.data
+                variables_values = {k: v["value"] for k, v in variant_variables.items()}
                 if name:
                     if name == variant_name:
                         if load:
-                            return load_schedule(schedule, **variant_metadata)
-                        return variant_metadata
+                            return load_schedule(
+                                schedule, **variables_values
+                            ), variant_variables
+                        return variant_variables
                     continue
                 if load:
-                    schedule_details = load_schedule(schedule, **variant_metadata)
+                    schedule_details = (
+                        load_schedule(schedule, **variables_values),
+                        variant_variables,
+                    )
                 else:
-                    schedule_details = variant_metadata
+                    schedule_details = variant_variables
                 schedules[variant_name] = schedule_details
         if not schedules:
             raise ValueError("No schedules found.")
@@ -134,3 +177,28 @@ class Schedule:
         path = self.client.data / "active_schedule.json"
         with path.open("w") as fp:
             json.dump(data, fp)
+
+    @classmethod
+    def variables(
+        cls, client: TadoClient, update: Mapping[str, str] = None
+    ) -> Dict[str, str]:
+        """Return global schedule variables."""
+        path = client.data / "variables.json"
+        if path.exists():
+            with path.open() as fp:
+                v = json.load(fp)
+        else:
+            v = {}
+        if update:
+            v.update(update)
+            with path.open("w") as fp:
+                json.dump(v, fp)
+        return v
+
+    def is_active(self):
+        """Check if the schedule is active."""
+        active_schedule, active_variables = self.active_schedule
+        return (active_schedule == self.current_schedule) and (
+            ScheduleVariables(active_variables)
+            == ScheduleVariables(self.current_variables)
+        )

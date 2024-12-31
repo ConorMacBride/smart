@@ -83,7 +83,8 @@ async def reset(api_key: str = Security(get_api_key)):
     schedule = Schedule(client=client)
     schedule.set(settings.tado_default_schedule)
     schedule.push()
-    return {"schedule": settings.tado_default_schedule}
+    variables = {k: v["value"] for k, v in schedule.current_variables.items()}
+    return {"schedule": schedule.current_schedule, "variables": variables}
 
 
 @app.get("/tado/schedule/active")
@@ -100,7 +101,8 @@ async def active(api_key: str = Security(get_api_key)):
 @app.get("/tado/schedule/all")
 async def all_schedules(api_key: str = Security(get_api_key)):
     client = get_client()
-    return Schedule.get(client=client, load=False)
+    schedules = Schedule.get(client=client, load=False)
+    return {k: {kk: vv["value"] for kk, vv in v.items()} for k, v in schedules.items()}
 
 
 class ScheduleConfig(BaseModel):
@@ -114,4 +116,24 @@ async def set_schedule(config: ScheduleConfig, api_key: str = Security(get_api_k
     schedule = Schedule(client=client)
     schedule.set(config.name, **config.variables)
     schedule.push()
-    return {"schedule": config.name, "variables": config.variables}
+    variables = {k: v["value"] for k, v in schedule.current_variables.items()}
+    return {"schedule": schedule.current_schedule, "variables": variables}
+
+
+@app.get("/tado/schedule/variables")
+async def get_schedule_variables(api_key: str = Security(get_api_key)):
+    client = get_client()
+    return Schedule.variables(client=client)
+
+
+@app.post("/tado/schedule/variables")
+async def set_schedule_variables(
+    variables: Mapping, api_key: str = Security(get_api_key)
+):
+    client = get_client()
+    variables = Schedule.variables(client=client, update=variables)
+    schedule = Schedule(client=client)
+    schedule.set(refresh=True)
+    if not schedule.is_active():
+        schedule.push()
+    return variables

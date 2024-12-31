@@ -1,3 +1,4 @@
+import json
 import re
 import tempfile
 from functools import lru_cache
@@ -116,6 +117,10 @@ class CommonTests:
         assert response.status_code == 401
         assert response.json() == {"detail": "Invalid or missing API Key"}
         assert response.headers["content-type"] == "application/json"
+
+    def teardown_method(self):
+        for file in Path(get_test_settings().tado_data).glob("*.json"):
+            file.unlink()
 
 
 class TestRoot(CommonTests):
@@ -313,7 +318,10 @@ class TestScheduleReset(CommonTests):
         )
         response = client.post("/tado/schedule/reset")
         assert response.status_code == 200
-        assert response.json() == {"schedule": "Schedule 2"}
+        assert response.json() == {
+            "schedule": "Schedule 2",
+            "variables": {"var1": "09:00", "var2": "10:00"},
+        }
 
 
 class TestScheduleActive(CommonTests):
@@ -344,15 +352,18 @@ class TestScheduleAll(CommonTests):
 
     @responses.activate(assert_all_requests_are_fired=True)
     def test_get(self):
+        (Path(get_test_settings().tado_data) / "variables.json").write_text(
+            '{"var3": "14:00", "var4": "15:00"}'
+        )
         responses.add(**auth_resp)
         response = client.get("/tado/schedule/all")
         assert response.status_code == 200
         assert response.json() == {
             "Schedule 1": {},
             "Schedule 2": {"var1": "09:00", "var2": "10:00"},
-            "Schedule 3": {"var1": "09:00", "var2": "10:00"},
-            "Schedule 3.1": {"var1": "09:30", "var2": "10:00"},
-            "Schedule 3.2": {"var1": "09:00", "var2": "09:30"},
+            "Schedule 3": {"var1": "09:00", "var2": "10:00", "var3": "14:00"},
+            "Schedule 3.1": {"var1": "09:30", "var2": "10:00", "var3": "14:00"},
+            "Schedule 3.2": {"var1": "09:00", "var2": "09:30", "var3": "14:00"},
         }
         assert response.headers["content-type"] == "application/json"
 
@@ -368,6 +379,9 @@ class TestScheduleSet(CommonTests):
 
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post(self):
+        (Path(get_test_settings().tado_data) / "variables.json").write_text(
+            '{"var3": "14:00", "var4": "15:00"}'
+        )
         responses.add(**auth_resp)
         responses.add(**token_resp)
         responses.add(**home_id_resp)
@@ -453,10 +467,102 @@ class TestScheduleSet(CommonTests):
         )
         response = client.post(
             "/tado/schedule/set",
-            json={"name": "Schedule 3.1", "variables": {"var2": "11:00"}},
+            json={
+                "name": "Schedule 3.1",
+                "variables": {"var1": "09:30", "var2": "11:00"},
+            },
         )
         assert response.status_code == 200
         assert response.json() == {
             "schedule": "Schedule 3.1",
-            "variables": {"var2": "11:00"},
+            "variables": {"var1": "09:30", "var2": "11:00", "var3": "14:00"},
         }
+
+
+class TestScheduleVariablesGet(CommonTests):
+    method = "get"
+    url = "/tado/schedule/variables"
+
+    @responses.activate(assert_all_requests_are_fired=True)
+    def test_get(self):
+        (Path(get_test_settings().tado_data) / "variables.json").write_text(
+            '{"sleep": "23:00", "wake": "07:00"}'
+        )
+        responses.add(**auth_resp)
+        response = client.get("/tado/schedule/variables")
+        assert response.status_code == 200
+        assert response.json() == {
+            "sleep": "23:00",
+            "wake": "07:00",
+        }
+        assert response.headers["content-type"] == "application/json"
+
+
+class TestScheduleVariablesPost(CommonTests):
+    method = "post"
+    url = "/tado/schedule/variables"
+
+    @responses.activate(assert_all_requests_are_fired=True)
+    def test_post(self):
+        (Path(get_test_settings().tado_data) / "active_schedule.json").write_text(
+            json.dumps(
+                {
+                    "schedule": "Schedule 3",
+                    "variables": {
+                        "var1": {"value": "09:00", "type": "default"},
+                        "var2": {"value": "10:00", "type": "default"},
+                        "var3": {"value": "14:00", "type": "default"},
+                    },
+                }
+            )
+        )
+        responses.add(**auth_resp)
+        responses.add(**token_resp)
+        responses.add(**home_id_resp)
+        responses.add(**zones_resp)
+        responses.add(**active_timetable_resp)
+        for zone in (1, 2, 3):
+            responses.add(
+                method=responses.PUT,
+                url=f"http://localhost:8081/api/v2/homes/123/zones/{zone}/schedule/timetables/0/blocks/MONDAY_TO_SUNDAY",
+                headers={"Authorization": "Bearer access-token"},
+            )
+        response = client.post(
+            "/tado/schedule/variables", json={"var3": "15:00", "var4": "06:00"}
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "var3": "15:00",
+            "var4": "06:00",
+        }
+        assert response.headers["content-type"] == "application/json"
+
+    @responses.activate(assert_all_requests_are_fired=True)
+    def test_post_no_update(self):
+        (Path(get_test_settings().tado_data) / "active_schedule.json").write_text(
+            json.dumps(
+                {
+                    "schedule": "Schedule 3",
+                    "variables": {
+                        "var1": {"value": "09:00", "type": "kwarg"},
+                        "var2": {"value": "10:00", "type": "default"},
+                        "var3": {"value": "14:00", "type": "default"},
+                    },
+                }
+            )
+        )
+        responses.add(**auth_resp)
+        responses.add(**token_resp)
+        responses.add(**home_id_resp)
+        responses.add(**zones_resp)
+        response = client.post(
+            "/tado/schedule/variables",
+            json={"var1": "06:00", "var3": "14:00", "var4": "06:00"},
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "var1": "06:00",
+            "var3": "14:00",
+            "var4": "06:00",
+        }
+        assert response.headers["content-type"] == "application/json"
