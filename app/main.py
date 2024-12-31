@@ -58,29 +58,32 @@ async def root(api_key: str = Security(get_api_key)):
     return {"version": __version__}
 
 
-@app.get("/tado/home")
+@app.post("/tado/home")
 async def home(api_key: str = Security(get_api_key)):
     client = get_client()
     client.set_home()
     if client.get_presence() != Presence.HOME:
         raise HTTPException(500, "Failed to update presence.")
+    return {"presence": Presence.HOME}
 
 
-@app.get("/tado/away")
+@app.post("/tado/away")
 async def away(api_key: str = Security(get_api_key)):
     client = get_client()
     client.set_away()
     if client.get_presence() != Presence.AWAY:
         raise HTTPException(500, "Failed to update presence.")
+    return {"presence": Presence.AWAY}
 
 
-@app.get("/tado/schedule/reset")
+@app.post("/tado/schedule/reset")
 async def reset(api_key: str = Security(get_api_key)):
     settings = get_settings()
     client = get_client()
     schedule = Schedule(client=client)
     schedule.set(settings.tado_default_schedule)
     schedule.push()
+    return {"schedule": settings.tado_default_schedule}
 
 
 @app.get("/tado/schedule/active")
@@ -111,3 +114,4 @@ async def set_schedule(config: ScheduleConfig, api_key: str = Security(get_api_k
     schedule = Schedule(client=client)
     schedule.set(config.name, **config.variables)
     schedule.push()
+    return {"schedule": config.name, "variables": config.variables}

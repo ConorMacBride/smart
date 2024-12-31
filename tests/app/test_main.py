@@ -98,20 +98,30 @@ def setup_module():
 
 
 class CommonTests:
+    method: str
+    url: str
+
     def test_missing_api_key(self):
-        response = client.get("/", headers={"x-api-key": ""})
+        response = client.__getattribute__(self.method)(
+            self.url, headers={"x-api-key": ""}
+        )
         assert response.status_code == 401
         assert response.json() == {"detail": "Invalid or missing API Key"}
         assert response.headers["content-type"] == "application/json"
 
     def test_invalid_api_key(self):
-        response = client.get("/", headers={"x-api-key": "invalid"})
+        response = client.__getattribute__(self.method)(
+            self.url, headers={"x-api-key": "invalid"}
+        )
         assert response.status_code == 401
         assert response.json() == {"detail": "Invalid or missing API Key"}
         assert response.headers["content-type"] == "application/json"
 
 
 class TestRoot(CommonTests):
+    method = "get"
+    url = "/"
+
     @responses.activate(assert_all_requests_are_fired=True)
     def test_get(self):
         response = client.get("/")
@@ -121,8 +131,11 @@ class TestRoot(CommonTests):
 
 
 class TestHome(CommonTests):
+    method = "post"
+    url = "/tado/home"
+
     @responses.activate(assert_all_requests_are_fired=True)
-    def test_get(self):
+    def test_post(self):
         responses.add(**auth_resp)
         responses.add(**token_resp)
         responses.add(**home_id_resp)
@@ -138,11 +151,12 @@ class TestHome(CommonTests):
             headers={"Authorization": "Bearer access-token"},
             json={"presence": "HOME"},
         )
-        response = client.get("/tado/home")
+        response = client.post("/tado/home")
         assert response.status_code == 200
+        assert response.json() == {"presence": "HOME"}
 
     @responses.activate(assert_all_requests_are_fired=True)
-    def test_get_did_not_update_state(self):
+    def test_post_did_not_update_state(self):
         responses.add(**auth_resp)
         responses.add(**token_resp)
         responses.add(**home_id_resp)
@@ -158,13 +172,16 @@ class TestHome(CommonTests):
             headers={"Authorization": "Bearer access-token"},
             json={"presence": "AWAY"},
         )
-        response = client.get("/tado/home")
+        response = client.post("/tado/home")
         assert response.status_code == 500
 
 
 class TestAway(CommonTests):
+    method = "post"
+    url = "/tado/away"
+
     @responses.activate(assert_all_requests_are_fired=True)
-    def test_get(self):
+    def test_post(self):
         responses.add(**auth_resp)
         responses.add(**token_resp)
         responses.add(**home_id_resp)
@@ -180,11 +197,12 @@ class TestAway(CommonTests):
             headers={"Authorization": "Bearer access-token"},
             json={"presence": "AWAY"},
         )
-        response = client.get("/tado/away")
+        response = client.post("/tado/away")
         assert response.status_code == 200
+        assert response.json() == {"presence": "AWAY"}
 
     @responses.activate(assert_all_requests_are_fired=True)
-    def test_get_did_not_update_state(self):
+    def test_post_did_not_update_state(self):
         responses.add(**auth_resp)
         responses.add(**token_resp)
         responses.add(**home_id_resp)
@@ -200,13 +218,16 @@ class TestAway(CommonTests):
             headers={"Authorization": "Bearer access-token"},
             json={"presence": "HOME"},
         )
-        response = client.get("/tado/away")
+        response = client.post("/tado/away")
         assert response.status_code == 500
 
 
 class TestScheduleReset(CommonTests):
+    method = "post"
+    url = "/tado/schedule/reset"
+
     @responses.activate(assert_all_requests_are_fired=True)
-    def test_get(self):
+    def test_post(self):
         responses.add(**auth_resp)
         responses.add(**token_resp)
         responses.add(**home_id_resp)
@@ -290,11 +311,15 @@ class TestScheduleReset(CommonTests):
             url="http://localhost:8081/api/v2/homes/123/zones/3/schedule/timetables/0/blocks/MONDAY_TO_SUNDAY",
             headers={"Authorization": "Bearer access-token"},
         )
-        response = client.get("/tado/schedule/reset")
+        response = client.post("/tado/schedule/reset")
         assert response.status_code == 200
+        assert response.json() == {"schedule": "Schedule 2"}
 
 
 class TestScheduleActive(CommonTests):
+    method = "get"
+    url = "/tado/schedule/active"
+
     @responses.activate(assert_all_requests_are_fired=True)
     def test_get(self):
         (Path(get_test_settings().tado_data) / "active_schedule.json").write_text(
@@ -314,6 +339,9 @@ class TestScheduleActive(CommonTests):
 
 
 class TestScheduleAll(CommonTests):
+    method = "get"
+    url = "/tado/schedule/all"
+
     @responses.activate(assert_all_requests_are_fired=True)
     def test_get(self):
         responses.add(**auth_resp)
@@ -330,6 +358,9 @@ class TestScheduleAll(CommonTests):
 
 
 class TestScheduleSet(CommonTests):
+    method = "post"
+    url = "/tado/schedule/set"
+
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post_default(self):
         response = client.post("/tado/schedule/set")
@@ -425,3 +456,7 @@ class TestScheduleSet(CommonTests):
             json={"name": "Schedule 3.1", "variables": {"var2": "11:00"}},
         )
         assert response.status_code == 200
+        assert response.json() == {
+            "schedule": "Schedule 3.1",
+            "variables": {"var2": "11:00"},
+        }
