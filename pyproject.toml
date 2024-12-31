@@ -55,3 +55,7 @@ source = "vcs"
 addopts = [
     "--import-mode=importlib",
 ]
+filterwarnings = [
+    "error",
+    "ignore:Updating active schedule with global variables:UserWarning",
+]

@@ -2,6 +2,7 @@
 name = "Schedule 3"
 var1 = "09:00"
 var2 = "10:00"
+var3 = "global"
 
 [[variant]]
 name = "Schedule 3.1"

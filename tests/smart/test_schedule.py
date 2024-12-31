@@ -1,4 +1,5 @@
 import functools
+import json
 import shutil
 from pathlib import Path
 from unittest.mock import Mock
@@ -6,7 +7,6 @@ from unittest.mock import Mock
 import pytest
 
 from smart.schedule import Schedule, ZoneSchedule
-from smart.schedule_utils import parse_dynamic_times
 
 
 class HttpResponse:
@@ -40,17 +40,6 @@ def setup_data(func):
     return wrapper
 
 
-def test_parse_dynamic_times_raises_exception():
-    with pytest.raises(KeyError):
-        parse_dynamic_times([{"time": "{var2}"}])
-    for time in ["{var1|01:00}", "{var1|+1:00}", "{var1|-1:00}"]:
-        with pytest.raises(ValueError, match="not a valid dynamic format"):
-            parse_dynamic_times([{"time": time}], var1="07:00")
-    for time in ["aaa", "7:00", "0700"]:
-        with pytest.raises(ValueError, match="not a valid static format"):
-            parse_dynamic_times([{"time": time}])
-
-
 class TestSchedule:
     def test_zone_schedules(self):
         zones = [
@@ -79,7 +68,10 @@ class TestSchedule:
 
     def test_push(self, tmp_path, schedule):
         schedule.current_schedule = "current-schedule"
-        schedule.current_variables = {"varA": "val1", "varB": 2}
+        schedule.current_variables = {
+            "varA": {"value": "val1", "type": "kwarg"},
+            "varB": {"value": 2, "type": "global"},
+        }
         schedule.client.data = tmp_path
 
         schedule.push()
@@ -89,21 +81,25 @@ class TestSchedule:
             zone.push.assert_called_once()
         assert schedule.active_schedule == (
             "current-schedule",
-            {"varA": "val1", "varB": 2},
+            {
+                "varA": {"value": "val1", "type": "kwarg"},
+                "varB": {"value": 2, "type": "global"},
+            },
         )
 
     @setup_data
     def test_set(self, tmp_path, schedule):
         all_schedules = Schedule.get(client=schedule.client, name="Schedule 1")
-        assert len(all_schedules["dining_room"]) == 5
-        assert len(all_schedules["bathroom"]) == 5
-        assert len(all_schedules["living_room"]) == 5
+        assert len(all_schedules[0]["dining_room"]) == 5
+        assert len(all_schedules[0]["bathroom"]) == 5
+        assert len(all_schedules[0]["living_room"]) == 5
+        assert all_schedules[1] == {}
 
         schedule.set("Schedule 1")
 
         assert len(schedule.zone_schedules) == 3
         for zone in schedule.zone_schedules:
-            zone.set.assert_called_once_with(all_schedules)
+            zone.set.assert_called_once_with(all_schedules[0])
         assert schedule.current_schedule == "Schedule 1"
         assert schedule.current_variables == {}
 
@@ -112,14 +108,21 @@ class TestSchedule:
         all_schedules = Schedule.get(
             client=schedule.client, name="Schedule 2", var1="07:00"
         )
+        assert all_schedules[1] == {
+            "var1": {"value": "07:00", "type": "kwarg"},
+            "var2": {"value": "10:00", "type": "default"},
+        }
 
         schedule.set("Schedule 2", var1="07:00")
 
         assert len(schedule.zone_schedules) == 3
         for zone in schedule.zone_schedules:
-            zone.set.assert_called_once_with(all_schedules)
+            zone.set.assert_called_once_with(all_schedules[0])
         assert schedule.current_schedule == "Schedule 2"
-        assert schedule.current_variables == {"var1": "07:00"}
+        assert schedule.current_variables == {
+            "var1": {"value": "07:00", "type": "kwarg"},
+            "var2": {"value": "10:00", "type": "default"},
+        }
 
     @setup_data
     def test_set_current_schedule(self, tmp_path, schedule):
@@ -128,65 +131,153 @@ class TestSchedule:
         )
         active_schedule = schedule.client.data / "active_schedule.json"
         active_schedule.write_text(
-            '{"schedule": "Schedule 3.1", "variables": {"var1": "08:00"}}'
+            json.dumps(
+                {
+                    "schedule": "Schedule 3.1",
+                    "variables": {
+                        "var1": {"value": "09:00", "type": "kwarg"},
+                        "var2": {"value": "10:00", "type": "default"},
+                        "var3": {"value": "global", "type": "default"},
+                    },
+                }
+            )
         )
+        assert all_schedules[1] == {
+            "var1": {"value": "08:00", "type": "kwarg"},
+            "var2": {"value": "10:00", "type": "default"},
+            "var3": {"value": "global", "type": "default"},
+        }
 
-        schedule.set()
+        schedule.set(var1="08:00")
 
         assert len(schedule.zone_schedules) == 3
         for zone in schedule.zone_schedules:
-            zone.set.assert_called_once_with(all_schedules)
+            zone.set.assert_called_once_with(all_schedules[0])
         assert schedule.current_schedule == "Schedule 3.1"
-        assert schedule.current_variables == {"var1": "08:00"}
+        assert schedule.current_variables == {
+            "var1": {"value": "08:00", "type": "kwarg"},
+            "var2": {"value": "10:00", "type": "default"},
+            "var3": {"value": "global", "type": "default"},
+        }
 
     @setup_data
     def test_get(self, tmp_path, schedule):
+        (schedule.client.data / "variables.json").write_text(
+            '{"var3": "14:00", "var4": "15:00"}'
+        )
+
         schedule_1 = Schedule.get(client=schedule.client, name="Schedule 1")
-        assert len(schedule_1["dining_room"]) == 5
-        assert len(schedule_1["bathroom"]) == 5
-        assert len(schedule_1["living_room"]) == 5
-        assert schedule_1["dining_room"][1]["start"] == "06:30"
-        assert schedule_1["dining_room"][2]["start"] == "10:20"
+        assert len(schedule_1[0]["dining_room"]) == 5
+        assert len(schedule_1[0]["bathroom"]) == 5
+        assert len(schedule_1[0]["living_room"]) == 5
+        assert schedule_1[0]["dining_room"][1]["start"] == "06:30"
+        assert schedule_1[0]["dining_room"][2]["start"] == "10:20"
+        assert schedule_1[1] == {}
 
         schedule_31 = Schedule.get(client=schedule.client, name="Schedule 3.1")
-        assert len(schedule_31["dining_room"]) == 5
-        assert len(schedule_31["bathroom"]) == 5
-        assert len(schedule_31["living_room"]) == 5
-        assert schedule_31["dining_room"][1]["start"] == "08:58"
-        assert schedule_31["dining_room"][2]["start"] == "10:43"
+        assert len(schedule_31[0]["dining_room"]) == 5
+        assert len(schedule_31[0]["bathroom"]) == 5
+        assert len(schedule_31[0]["living_room"]) == 5
+        assert schedule_31[0]["dining_room"][1]["start"] == "08:58"
+        assert schedule_31[0]["dining_room"][2]["start"] == "10:43"
+        assert schedule_31[1] == {
+            "var1": {"value": "09:30", "type": "default"},
+            "var2": {"value": "10:00", "type": "default"},
+            "var3": {"value": "14:00", "type": "global"},
+        }
 
     @setup_data
     def test_get_no_name(self, tmp_path, schedule):
+        (schedule.client.data / "variables.json").write_text(
+            '{"var3": "14:00", "var4": "15:00"}'
+        )
+
         all_schedules = Schedule.get(client=schedule.client)
         assert len(all_schedules) == 5
-        assert len(all_schedules["Schedule 1"]["dining_room"]) == 5
-        assert len(all_schedules["Schedule 1"]["bathroom"]) == 5
-        assert len(all_schedules["Schedule 1"]["living_room"]) == 5
-        assert len(all_schedules["Schedule 2"]["dining_room"]) == 5
-        assert len(all_schedules["Schedule 2"]["bathroom"]) == 5
-        assert len(all_schedules["Schedule 2"]["living_room"]) == 5
+        assert len(all_schedules["Schedule 1"][0]["dining_room"]) == 5
+        assert len(all_schedules["Schedule 1"][0]["bathroom"]) == 5
+        assert len(all_schedules["Schedule 1"][0]["living_room"]) == 5
+        assert len(all_schedules["Schedule 2"][0]["dining_room"]) == 5
+        assert len(all_schedules["Schedule 2"][0]["bathroom"]) == 5
+        assert len(all_schedules["Schedule 2"][0]["living_room"]) == 5
+        assert all_schedules["Schedule 1"][1] == {}
+        assert all_schedules["Schedule 2"][1] == {
+            "var1": {"value": "09:00", "type": "default"},
+            "var2": {"value": "10:00", "type": "default"},
+        }
+        assert all_schedules["Schedule 3"][1] == {
+            "var1": {"value": "09:00", "type": "default"},
+            "var2": {"value": "10:00", "type": "default"},
+            "var3": {"value": "14:00", "type": "global"},
+        }
+        assert all_schedules["Schedule 3.1"][1] == {
+            "var1": {"value": "09:30", "type": "default"},
+            "var2": {"value": "10:00", "type": "default"},
+            "var3": {"value": "14:00", "type": "global"},
+        }
+        assert all_schedules["Schedule 3.2"][1] == {
+            "var1": {"value": "09:00", "type": "default"},
+            "var2": {"value": "09:30", "type": "default"},
+            "var3": {"value": "14:00", "type": "global"},
+        }
 
     @setup_data
     def test_get_no_load(self, tmp_path, schedule):
         schedule_2 = Schedule.get(
             client=schedule.client, name="Schedule 2", load=False, var2="10:10"
         )
-        assert schedule_2["var1"] == "09:00"
-        assert schedule_2["var2"] == "10:10"
+        assert schedule_2["var1"] == {"value": "09:00", "type": "default"}
+        assert schedule_2["var2"] == {"value": "10:10", "type": "kwarg"}
 
     @setup_data
     def test_get_no_name_no_load(self, tmp_path, schedule):
         all_schedules = Schedule.get(client=schedule.client, load=False)
         assert len(all_schedules) == 5
         assert len(all_schedules["Schedule 1"]) == 0
-        assert all_schedules["Schedule 2"]["var1"] == "09:00"
-        assert all_schedules["Schedule 2"]["var2"] == "10:00"
-        assert all_schedules["Schedule 3"]["var1"] == "09:00"
-        assert all_schedules["Schedule 3"]["var2"] == "10:00"
-        assert all_schedules["Schedule 3.1"]["var1"] == "09:30"
-        assert all_schedules["Schedule 3.1"]["var2"] == "10:00"
-        assert all_schedules["Schedule 3.2"]["var1"] == "09:00"
-        assert all_schedules["Schedule 3.2"]["var2"] == "09:30"
+        assert all_schedules["Schedule 2"]["var1"] == {
+            "value": "09:00",
+            "type": "default",
+        }
+        assert all_schedules["Schedule 2"]["var2"] == {
+            "value": "10:00",
+            "type": "default",
+        }
+        assert all_schedules["Schedule 3"]["var1"] == {
+            "value": "09:00",
+            "type": "default",
+        }
+        assert all_schedules["Schedule 3"]["var2"] == {
+            "value": "10:00",
+            "type": "default",
+        }
+        assert all_schedules["Schedule 3"]["var3"] == {
+            "value": "global",
+            "type": "default",
+        }
+        assert all_schedules["Schedule 3.1"]["var1"] == {
+            "value": "09:30",
+            "type": "default",
+        }
+        assert all_schedules["Schedule 3.1"]["var2"] == {
+            "value": "10:00",
+            "type": "default",
+        }
+        assert all_schedules["Schedule 3.1"]["var3"] == {
+            "value": "global",
+            "type": "default",
+        }
+        assert all_schedules["Schedule 3.2"]["var1"] == {
+            "value": "09:00",
+            "type": "default",
+        }
+        assert all_schedules["Schedule 3.2"]["var2"] == {
+            "value": "09:30",
+            "type": "default",
+        }
+        assert all_schedules["Schedule 3.2"]["var3"] == {
+            "value": "global",
+            "type": "default",
+        }
 
     @setup_data
     def test_get_raises_exception(self, tmp_path, schedule):
@@ -196,6 +287,125 @@ class TestSchedule:
             ValueError, match="Cannot pass `kwargs` to `get` when `name` not specified."
         ):
             Schedule.get(client=schedule.client, var1="07:00")
+
+    @setup_data
+    def test_variables(self, tmp_path, schedule):
+        (schedule.client.data / "variables.json").write_text(
+            '{"var10": "09:00", "var20": "10:00"}'
+        )
+        variables = Schedule.variables(client=schedule.client)
+        assert variables == {"var10": "09:00", "var20": "10:00"}
+
+    @setup_data
+    def test_variables_update(self, tmp_path, schedule):
+        (schedule.client.data / "variables.json").write_text(
+            '{"var10": "09:00", "var20": "10:00"}'
+        )
+        variables = Schedule.variables(
+            client=schedule.client,
+            update={"var10": "08:00", "var30": "11:00"},
+        )
+        assert variables == {"var10": "08:00", "var20": "10:00", "var30": "11:00"}
+
+    @setup_data
+    def test_is_active_true_1(self, tmp_path, schedule):
+        (schedule.client.data / "active_schedule.json").write_text(
+            json.dumps(
+                {
+                    "schedule": "Schedule 3.1",
+                    "variables": {
+                        "var1": {"value": "08:00", "type": "kwarg"},
+                        "var2": {"value": "10:00", "type": "default"},
+                        "var3": {"value": "12:00", "type": "global"},
+                    },
+                }
+            )
+        )
+        (schedule.client.data / "variables.json").write_text(
+            '{"var1": "06:00", "var3": "12:00"}'
+        )
+        schedule.set(refresh=True)
+        assert schedule.is_active()
+        assert schedule.current_variables == {
+            "var1": {"value": "08:00", "type": "kwarg"},
+            "var2": {"value": "10:00", "type": "default"},
+            "var3": {"value": "12:00", "type": "global"},
+        }
+
+    @setup_data
+    def test_is_active_true_2(self, tmp_path, schedule):
+        (schedule.client.data / "active_schedule.json").write_text(
+            json.dumps(
+                {
+                    "schedule": "Schedule 3.1",
+                    "variables": {
+                        "var1": {"value": "08:00", "type": "kwarg"},
+                        "var2": {"value": "10:00", "type": "default"},
+                        "var3": {"value": "12:00", "type": "global"},
+                    },
+                }
+            )
+        )
+        (schedule.client.data / "variables.json").write_text(
+            '{"var1": "06:00", "var2": "10:00", "var3": "12:00", "var4-extra": "14:00"}'
+        )
+        schedule.set(refresh=True)
+        assert schedule.is_active()
+        assert schedule.current_variables == {
+            "var1": {"value": "08:00", "type": "kwarg"},
+            "var2": {"value": "10:00", "type": "global"},
+            "var3": {"value": "12:00", "type": "global"},
+        }
+
+    @setup_data
+    def test_is_active_false_1(self, tmp_path, schedule):
+        (schedule.client.data / "active_schedule.json").write_text(
+            json.dumps(
+                {
+                    "schedule": "Schedule 3.1",
+                    "variables": {
+                        "var1": {"value": "08:00", "type": "kwarg"},
+                        "var2": {"value": "10:00", "type": "default"},
+                        "var3": {"value": "12:00", "type": "global"},
+                    },
+                }
+            )
+        )
+        (schedule.client.data / "variables.json").write_text(
+            '{"var1": "06:00", "var2": "11:00", "var3": "12:00"}'
+        )
+        schedule.set(refresh=True)
+        assert not schedule.is_active()
+        assert schedule.current_variables == {
+            "var1": {"value": "08:00", "type": "kwarg"},
+            "var2": {"value": "11:00", "type": "global"},
+            "var3": {"value": "12:00", "type": "global"},
+        }
+
+    @setup_data
+    def test_is_active_false_2(self, tmp_path, schedule):
+        (schedule.client.data / "active_schedule.json").write_text(
+            json.dumps(
+                {
+                    "schedule": "Schedule 3.1",
+                    "variables": {
+                        "var1": {"value": "08:00", "type": "kwarg"},
+                        "var2": {"value": "10:00", "type": "default"},
+                        "var3": {"value": "12:00", "type": "global"},
+                    },
+                }
+            )
+        )
+        (schedule.client.data / "variables.json").write_text(
+            '{"var1": "06:00", "var3": "13:00"}'
+        )
+        schedule.set(refresh=True)
+        assert not schedule.is_active()
+        assert schedule.current_variables == {
+            "var1": {"value": "08:00", "type": "kwarg"},
+            "var2": {"value": "10:00", "type": "default"},
+            "var3": {"value": "13:00", "type": "global"},
+        }
 
 
 class TestZoneSchedule:
