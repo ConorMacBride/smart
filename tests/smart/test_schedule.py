@@ -543,6 +543,24 @@ class TestZoneSchedule:
 
         assert zone_schedule.json == schedule["dining_room"]
 
+    def test_set_not_found(self, tado_client):
+        zone_schedule = ZoneSchedule(
+            client=tado_client, zone={"id": 1, "name": "Dining Room 2"}
+        )
+        schedule = {
+            "dining_room": [
+                {"time": "06:30", "temperature": 20.0},
+                {"time": "10:20", "temperature": 21.0},
+                {"time": "14:00", "temperature": 22.0},
+                {"time": "17:00", "temperature": 21.0},
+                {"time": "21:00", "temperature": 20.0},
+            ]
+        }
+
+        zone_schedule.set(schedule)
+
+        assert zone_schedule.json == [{"time": "00:00", "temperature": 0}]
+
 
 class TestSchedules:
     def test_merge_timetables_1(self):
@@ -617,4 +635,39 @@ class TestSchedules:
             ("06:00", "12:00", 0),
             ("12:00", "23:00", 3),
             ("23:00", "01:00", 1),
+        ]
+
+    def test_empty_zone(self, tmp_path):
+        (tmp_path / "s.toml").write_text(
+            '[metadata]\nname = "S1"\n\n[[z1]]\ntime = "23:15"\ntemperature = 10'
+        )
+        s = Schedules(tmp_path, zones=[{"name": "Z1"}, {"name": "Z2"}]).load("S1")
+        assert s["z1"] == [
+            {
+                "dayType": "MONDAY_TO_SUNDAY",
+                "end": "00:00",
+                "geolocationOverride": False,
+                "setting": {
+                    "power": "ON",
+                    "temperature": {
+                        "celsius": 10,
+                        "fahrenheit": 50.0,
+                    },
+                    "type": "HEATING",
+                },
+                "start": "00:00",
+            },
+        ]
+        assert s["z2"] == [
+            {
+                "dayType": "MONDAY_TO_SUNDAY",
+                "end": "00:00",
+                "geolocationOverride": False,
+                "setting": {
+                    "power": "OFF",
+                    "temperature": None,
+                    "type": "HEATING",
+                },
+                "start": "00:00",
+            },
         ]

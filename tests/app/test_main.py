@@ -356,6 +356,9 @@ class TestScheduleAll(CommonTests):
             '{"var3": "14:00", "var4": "15:00"}'
         )
         responses.add(**auth_resp)
+        responses.add(**token_resp)
+        responses.add(**home_id_resp)
+        responses.add(**zones_resp)
         response = client.get("/tado/schedule/all")
         assert response.status_code == 200
         assert response.json() == {
