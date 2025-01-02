@@ -61,7 +61,7 @@ class ZoneSchedule:
     def set(self, schedule: Mapping) -> None:
         """Load a schedule."""
         zone_name = self.zone_name.lower().replace(" ", "_")
-        self.json = schedule[zone_name]
+        self.json = schedule.get(zone_name, [{"time": "00:00", "temperature": 0}])
 
 
 class Schedule:
@@ -118,6 +118,7 @@ class Schedule:
             client.data / "schedules",
             Schedule.variables(client),
             variables,
+            client.zones,
             **kwargs,
         )
 
@@ -188,8 +189,10 @@ class Schedules:
         path,
         global_variables: Dict = None,
         variables: ScheduleVariables = None,
+        zones: List[Dict] = None,
         **kwargs,
     ):
+        self.zones = [zone["name"].lower().replace(" ", "_") for zone in zones or []]
         self.schedules = {}
         for config in path.glob("*.toml"):
             with open(config, "rb") as fp:
@@ -239,12 +242,14 @@ class Schedules:
 
     def load(self, name: str):
         schedule = {}
-        for zone_name in self.schedules[name]["schedule"].keys():
+        for zone_name in self.zones or self.schedules[name]["schedule"].keys():
             schedule[zone_name] = self.load_zone(name, zone_name)
         return schedule
 
     def load_zone(self, name: str, zone: str, tado_format: bool = True, **kwargs):
-        schedule = self.schedules[name]["schedule"][zone]
+        schedule = self.schedules[name]["schedule"].get(
+            zone, [{"time": "00:00", "temperature": 0}]
+        )
 
         base_timetable = []
         for block in schedule:
@@ -275,6 +280,9 @@ class Schedules:
         )
         if base_timetable:
             timetable = self.merge_timetables(base_timetable, timetable)
+
+        if len(timetable) == 1:
+            timetable = [("00:00", "00:00", timetable[0][2])]
 
         if tado_format:
             return [create_block(*block) for block in timetable]
