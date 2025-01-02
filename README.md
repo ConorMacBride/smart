@@ -125,7 +125,7 @@ curl \
   http://127.0.0.1:8000/tado/schedule/all
 ```
 
-### `/tado/schedule/set`: Activate one your configured schedules
+### `/tado/schedule/set`: Activate one of the configured schedules
 ```
 curl \
   -H "x-api-key: yourAPIkey" \
@@ -146,13 +146,32 @@ curl \
 ```
 curl \
   -H "x-api-key: yourAPIkey" \
+  --request POST \
   http://127.0.0.1:8000/tado/schedule/reset
+```
+
+### `/tado/schedule/variables`: Get global variables
+```
+curl \
+  -H "x-api-key: yourAPIkey" \
+  http://127.0.0.1:8000/tado/schedule/variables
+```
+
+### `/tado/schedule/variables`: Set global variables
+```
+curl \
+  -H "x-api-key: yourAPIkey" \
+  -H "Content-Type: application/json" \
+  --request POST \
+  --data '{"wake": "07:00", "sleep": "23:00"}' \
+  http://127.0.0.1:8000/tado/schedule/variables
 ```
 
 ### `/tado/away`: Set tadoº to AWAY mode
 ```
 curl \
   -H "x-api-key: yourAPIkey" \
+  --request POST \
   http://127.0.0.1:8000/tado/away
 ```
 
@@ -160,5 +179,6 @@ curl \
 ```
 curl \
   -H "x-api-key: yourAPIkey" \
+  --request POST \
   http://127.0.0.1:8000/tado/home
 ```
