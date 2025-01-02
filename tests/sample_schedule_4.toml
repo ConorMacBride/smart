@@ -23,8 +23,16 @@ time = "10:45"
 temperature = 30
 
 [[dining_room]]
+time = "10:47"
+temperature = 30
+
+[[dining_room]]
 time = "13:00"
 temperature = "reset"
+
+[[bathroom]]
+time = "23:30"
+temperature = 10000
 
 [[bathroom]]
 time = "23:30"

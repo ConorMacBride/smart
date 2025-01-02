@@ -281,11 +281,38 @@ class Schedules:
         if base_timetable:
             timetable = self.merge_timetables(base_timetable, timetable)
 
-        if len(timetable) == 1:
-            timetable = [("00:00", "00:00", timetable[0][2])]
+        timetable = self.clean_timetable(timetable)
 
         if tado_format:
             return [create_block(*block) for block in timetable]
+        return timetable
+
+    @staticmethod
+    def clean_timetable(timetable):
+        # Remove empty time ranges
+        if len(timetable) > 1:
+            timetable = [block for block in timetable if block[0] != block[1]]
+
+        # Remove redundant splits
+        if len(timetable) > 1:
+            merged = []
+            current_start, current_end, current_temperature = timetable[0]
+            for start, end, temperature in timetable[1:]:
+                if temperature == current_temperature:
+                    current_end = end
+                else:
+                    merged.append((current_start, current_end, current_temperature))
+                    current_start, current_end, current_temperature = (
+                        start,
+                        end,
+                        temperature,
+                    )
+            merged.append((current_start, current_end, current_temperature))
+            timetable = merged
+
+        if len(timetable) == 1:
+            timetable = [("00:00", "00:00", timetable[0][2])]
+
         return timetable
 
     @staticmethod
@@ -333,28 +360,7 @@ class Schedules:
                 merged_timetable[-1][2],
             )
         )
-        merged_timetable = timetable
-
-        # Remove empty time ranges
-        merged_timetable = [block for block in merged_timetable if block[0] != block[1]]
-
-        # Remove redundant splits
-        merged = []
-        current_start, current_end, current_temperature = merged_timetable[0]
-        for start, end, temperature in merged_timetable[1:]:
-            if temperature == current_temperature:
-                current_end = end
-            else:
-                merged.append((current_start, current_end, current_temperature))
-                current_start, current_end, current_temperature = (
-                    start,
-                    end,
-                    temperature,
-                )
-        merged.append((current_start, current_end, current_temperature))
-        merged_timetable = merged
-
-        return merged_timetable
+        return Schedules.clean_timetable(timetable)
 
     @staticmethod
     def schedule_to_timetable(
