@@ -66,14 +66,17 @@ def _parse_time(time: str) -> str:
     return m[0]
 
 
+def parse_dynamic_time(time, **kwargs):
+    if time.startswith("{"):
+        time = _parse_dynamic_time(time, **kwargs)
+    else:
+        time = _parse_time(time)
+    return time
+
+
 def parse_dynamic_times(schedule: List[MutableMapping], /, **kwargs) -> None:
     for block in schedule:
-        time = block["time"]
-        if time.startswith("{"):
-            time = _parse_dynamic_time(time, **kwargs)
-        else:
-            time = _parse_time(time)
-        block["time"] = time
+        block["time"] = parse_dynamic_time(block["time"], **kwargs)
 
 
 class ScheduleVariables(UserDict):

@@ -11,6 +11,7 @@ from smart.schedule_utils import (
     parse_dynamic_times,
     by_time,
     create_block,
+    parse_dynamic_time,
 )
 
 
@@ -242,13 +243,18 @@ class Schedules:
             schedule[zone_name] = self.load_zone(name, zone_name)
         return schedule
 
-    def load_zone(self, name: str, zone: str, tado_format: bool = True):
+    def load_zone(self, name: str, zone: str, tado_format: bool = True, **kwargs):
         schedule = self.schedules[name]["schedule"][zone]
 
         base_timetable = []
         for block in schedule:
             if "copy" in block:
-                copy_schedule = block["copy"]
+                copy_block = block.copy()
+                copy_schedule = copy_block.pop("copy")
+                variables = {
+                    k: parse_dynamic_time(v, **self.variables_values(name))
+                    for k, v in copy_block.items()
+                }
                 if ":" in copy_schedule:
                     copy_schedule_name, copy_schedule_zone = copy_schedule.split(":")
                 else:
@@ -256,12 +262,17 @@ class Schedules:
                 copy_schedule_name = copy_schedule_name or name
                 copy_schedule_zone = copy_schedule_zone or zone
                 base_timetable = self.load_zone(
-                    copy_schedule_name, copy_schedule_zone, tado_format=False
+                    copy_schedule_name,
+                    copy_schedule_zone,
+                    tado_format=False,
+                    **variables,
                 )
                 break
         schedule = list(filter(lambda block: "copy" not in block, schedule))
 
-        timetable = self.schedule_to_timetable(schedule, **self.variables_values(name))
+        timetable = self.schedule_to_timetable(
+            schedule, **(self.variables_values(name) | kwargs)
+        )
         if base_timetable:
             timetable = self.merge_timetables(base_timetable, timetable)
 
