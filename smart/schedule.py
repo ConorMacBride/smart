@@ -1,10 +1,18 @@
+import copy
 import json
 import tomllib
+import datetime
 from functools import cached_property
 from typing import MutableMapping, List, Mapping, Tuple, Dict, Union
 
 from smart.tado import TadoClient
-from smart.schedule_utils import load_schedule, ScheduleVariables
+from smart.schedule_utils import (
+    ScheduleVariables,
+    parse_dynamic_times,
+    by_time,
+    create_block,
+    parse_dynamic_time,
+)
 
 
 class ZoneSchedule:
@@ -106,65 +114,31 @@ class Schedule:
         if name is None and kwargs:
             raise ValueError("Cannot pass `kwargs` to `get` when `name` not specified.")
 
-        global_variables = Schedule.variables(client)
-        schedules = {}
-        path = client.data / "schedules"
+        schedules = Schedules(
+            client.data / "schedules",
+            Schedule.variables(client),
+            variables,
+            **kwargs,
+        )
 
-        for config in path.glob("*.toml"):
-            with open(config, "rb") as fp:
-                schedule = tomllib.load(fp)
-            metadata = schedule.pop("metadata", {})
-            variants = [metadata] + schedule.pop("variant", [])
+        if name:
+            if name not in schedules.schedules:
+                raise ValueError("No schedules found.")
+            if load:
+                return schedules.load(name), schedules.variables(name)
+            return schedules.variables(name)
 
-            for variant in variants:
-                variant_metadata = {**metadata, **variant}
-                variant_name = variant_metadata.pop("name")
-                variant_variables = (
-                    variables.copy() if variables else ScheduleVariables()
+        schedules = {
+            name: (
+                (
+                    schedules.load(name),
+                    schedules.variables(name),
                 )
-
-                variant_variables.add_default(
-                    **{
-                        k: v
-                        for k, v in variant_metadata.items()
-                        if k not in variant_variables
-                    }
-                )
-                variant_variables.add_global(
-                    **{
-                        k: v
-                        for k, v in global_variables.items()
-                        if k in variant_metadata and k not in variant_variables.globals
-                    }
-                )
-                variant_variables.add_kwarg(
-                    **{k: v for k, v in kwargs.items() if k in variant_metadata}
-                )
-
-                variables_values = {
-                    k: v["value"] for k, v in variant_variables.data.items()
-                }
-
-                if name:
-                    if name == variant_name:
-                        if load:
-                            return load_schedule(
-                                schedule, **variables_values
-                            ), variant_variables.data
-                        return variant_variables.data
-                    continue
-
-                schedules[variant_name] = (
-                    (
-                        load_schedule(schedule, **variables_values),
-                        variant_variables.data,
-                    )
-                    if load
-                    else variant_variables.data
-                )
-
-        if not schedules:
-            raise ValueError("No schedules found.")
+                if load
+                else schedules.variables(name)
+            )
+            for name in schedules.schedules.keys()
+        }
         return schedules
 
     @property
@@ -206,3 +180,200 @@ class Schedule:
             ScheduleVariables(active_variables)
             == ScheduleVariables(self.current_variables)
         )
+
+
+class Schedules:
+    def __init__(
+        self,
+        path,
+        global_variables: Dict = None,
+        variables: ScheduleVariables = None,
+        **kwargs,
+    ):
+        self.schedules = {}
+        for config in path.glob("*.toml"):
+            with open(config, "rb") as fp:
+                schedule = tomllib.load(fp)
+            metadata = schedule.pop("metadata", {})
+            variants = [metadata] + schedule.pop("variant", [])
+
+            for variant in variants:
+                variant_metadata = {**metadata, **variant}
+                variant_name = variant_metadata.pop("name")
+                variant_variables = (
+                    variables.copy() if variables else ScheduleVariables()
+                )
+
+                variant_variables.add_default(
+                    **{
+                        k: v
+                        for k, v in variant_metadata.items()
+                        if k not in variant_variables
+                    }
+                )
+                if global_variables:
+                    variant_variables.add_global(
+                        **{
+                            k: v
+                            for k, v in global_variables.items()
+                            if k in variant_metadata
+                            and k not in variant_variables.globals
+                        }
+                    )
+                variant_variables.add_kwarg(
+                    **{k: v for k, v in kwargs.items() if k in variant_metadata}
+                )
+
+                self.schedules[variant_name] = {
+                    "schedule": schedule,
+                    "variables": variant_variables,
+                }
+
+    def variables(self, name: str):
+        return self.schedules[name]["variables"].data
+
+    def variables_values(self, name: str):
+        return {
+            k: v["value"] for k, v in self.schedules[name]["variables"].data.items()
+        }
+
+    def load(self, name: str):
+        schedule = {}
+        for zone_name in self.schedules[name]["schedule"].keys():
+            schedule[zone_name] = self.load_zone(name, zone_name)
+        return schedule
+
+    def load_zone(self, name: str, zone: str, tado_format: bool = True, **kwargs):
+        schedule = self.schedules[name]["schedule"][zone]
+
+        base_timetable = []
+        for block in schedule:
+            if "copy" in block:
+                copy_block = block.copy()
+                copy_schedule = copy_block.pop("copy")
+                variables = {
+                    k: parse_dynamic_time(v, **self.variables_values(name))
+                    for k, v in copy_block.items()
+                }
+                if ":" in copy_schedule:
+                    copy_schedule_name, copy_schedule_zone = copy_schedule.split(":")
+                else:
+                    copy_schedule_name, copy_schedule_zone = copy_schedule, zone
+                copy_schedule_name = copy_schedule_name or name
+                copy_schedule_zone = copy_schedule_zone or zone
+                base_timetable = self.load_zone(
+                    copy_schedule_name,
+                    copy_schedule_zone,
+                    tado_format=False,
+                    **variables,
+                )
+                break
+        schedule = list(filter(lambda block: "copy" not in block, schedule))
+
+        timetable = self.schedule_to_timetable(
+            schedule, **(self.variables_values(name) | kwargs)
+        )
+        if base_timetable:
+            timetable = self.merge_timetables(base_timetable, timetable)
+
+        if tado_format:
+            return [create_block(*block) for block in timetable]
+        return timetable
+
+    @staticmethod
+    def merge_timetables(base_timetable, timetable):
+        timetable = [(*block, 0) for block in base_timetable] + [
+            (*block, 1) for block in timetable
+        ]
+        timetable = sorted(timetable, key=lambda x: x[0])
+
+        # Merge timetables
+        last_base_block = next(
+            filter(lambda block: block[-1] == 0, reversed(timetable))
+        )  # last base block
+        merged_timetable = []
+        start_block = None
+        for block in timetable:
+            if block[-1] == 1:
+                if block[2] == "reset":
+                    merged_timetable.append(
+                        (block[0], last_base_block[1], last_base_block[2])
+                    )
+                    start_block = None
+                else:
+                    start_block = block
+                    merged_timetable.append(block[:-1])
+            else:
+                last_base_block = block[:-1]
+                if start_block is None:
+                    merged_timetable.append(block[:-1])
+
+        # Cut overlapping end times
+        timetable = []
+        for idx in range(len(merged_timetable) - 1):
+            timetable.append(
+                (
+                    merged_timetable[idx][0],
+                    merged_timetable[idx + 1][0],
+                    merged_timetable[idx][2],
+                )
+            )
+        timetable.append(
+            (
+                merged_timetable[-1][0],
+                merged_timetable[0][0],
+                merged_timetable[-1][2],
+            )
+        )
+        merged_timetable = timetable
+
+        # Remove empty time ranges
+        merged_timetable = [block for block in merged_timetable if block[0] != block[1]]
+
+        # Remove redundant splits
+        merged = []
+        current_start, current_end, current_temperature = merged_timetable[0]
+        for start, end, temperature in merged_timetable[1:]:
+            if temperature == current_temperature:
+                current_end = end
+            else:
+                merged.append((current_start, current_end, current_temperature))
+                current_start, current_end, current_temperature = (
+                    start,
+                    end,
+                    temperature,
+                )
+        merged.append((current_start, current_end, current_temperature))
+        merged_timetable = merged
+
+        return merged_timetable
+
+    @staticmethod
+    def schedule_to_timetable(
+        schedule: List[MutableMapping], /, **metadata
+    ) -> List[Tuple[str, str, Union[float | int]]]:
+        data = []
+        schedule = copy.deepcopy(schedule)
+        parse_dynamic_times(schedule, **metadata)
+        schedule.sort(key=by_time)
+        n_blocks = len(schedule)
+        for idx in range(n_blocks):
+            start = schedule[idx]["time"]
+            if idx + 1 >= n_blocks:
+                end = schedule[0]["time"]
+            else:
+                end = schedule[idx + 1]["time"]
+            temperature = schedule[idx]["temperature"]
+
+            # Split blocks at midnight
+            if not (start == "00:00" or end == "00:00"):
+                start_dt = datetime.datetime.strptime(start, "%H:%M")
+                end_dt = datetime.datetime.strptime(end, "%H:%M")
+                if end_dt < start_dt:  # block includes midnight
+                    data.insert(0, ("00:00", end, temperature))
+                    data.append((start, "00:00", temperature))
+                    continue
+
+            data.append((start, end, temperature))
+
+        return sorted(data, key=lambda block: block[0])

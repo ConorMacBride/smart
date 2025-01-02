@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from smart.schedule import Schedule, ZoneSchedule
+from smart.schedule import Schedule, ZoneSchedule, Schedules
 
 
 class HttpResponse:
@@ -34,6 +34,9 @@ def setup_data(func):
         )
         shutil.copy(
             Path(__file__).parent.parent / "sample_schedule_3.toml", dest / "s3.toml"
+        )
+        shutil.copy(
+            Path(__file__).parent.parent / "sample_schedule_4.toml", dest / "s4.toml"
         )
         func(self, tmp_path, schedule)
 
@@ -186,6 +189,43 @@ class TestSchedule:
             "var3": {"value": "14:00", "type": "global"},
         }
 
+        s4, v4 = Schedule.get(client=schedule.client, name="Schedule 4")
+
+        def f(v):
+            return [
+                (
+                    x["start"],
+                    x["end"],
+                    (x["setting"]["temperature"] or {}).get("celsius", None),
+                )
+                for x in v
+            ]
+
+        assert len(s4) == 3
+        assert f(s4["bathroom"]) == [
+            ("00:00", "06:30", None),
+            ("06:30", "23:30", 18),
+            ("23:30", "00:00", None),
+        ]
+        assert f(s4["dining_room"]) == [
+            ("00:00", "06:15", None),
+            ("06:15", "06:30", 17.5),
+            ("06:30", "07:30", 25),
+            ("07:30", "09:00", 17.5),
+            ("09:00", "10:30", 21),
+            ("10:30", "10:45", 7),
+            ("10:45", "13:00", 30),
+            ("13:00", "17:00", 21),
+            ("17:00", "23:15", 22.5),
+            ("23:15", "00:00", None),
+        ]
+        assert f(s4["living_room"]) == [
+            ("00:00", "07:30", None),
+            ("07:30", "23:30", 18),
+            ("23:30", "00:00", None),
+        ]
+        assert v4 == {"var1": {"value": "06:30", "type": "default"}}
+
     @setup_data
     def test_get_no_name(self, tmp_path, schedule):
         (schedule.client.data / "variables.json").write_text(
@@ -193,7 +233,7 @@ class TestSchedule:
         )
 
         all_schedules = Schedule.get(client=schedule.client)
-        assert len(all_schedules) == 5
+        assert len(all_schedules) == 6
         assert len(all_schedules["Schedule 1"][0]["dining_room"]) == 5
         assert len(all_schedules["Schedule 1"][0]["bathroom"]) == 5
         assert len(all_schedules["Schedule 1"][0]["living_room"]) == 5
@@ -232,7 +272,7 @@ class TestSchedule:
     @setup_data
     def test_get_no_name_no_load(self, tmp_path, schedule):
         all_schedules = Schedule.get(client=schedule.client, load=False)
-        assert len(all_schedules) == 5
+        assert len(all_schedules) == 6
         assert len(all_schedules["Schedule 1"]) == 0
         assert all_schedules["Schedule 2"]["var1"] == {
             "value": "09:00",
@@ -502,3 +542,79 @@ class TestZoneSchedule:
         zone_schedule.set(schedule)
 
         assert zone_schedule.json == schedule["dining_room"]
+
+
+class TestSchedules:
+    def test_merge_timetables_1(self):
+        merged = Schedules.merge_timetables(
+            [
+                ("01:00", "03:00", 0),
+                ("03:00", "05:00", 3),
+                ("05:00", "07:00", 5),
+                ("07:00", "09:00", 7),
+                ("09:00", "18:00", 9),
+                ("18:00", "01:00", 18),
+            ],
+            [
+                ("02:00", "02:30", 2),
+                ("02:30", "03:30", "reset"),
+                ("03:30", "05:00", 22),
+                ("05:00", "06:30", 33),
+                ("06:30", "02:00", "reset"),
+            ],
+        )
+        assert merged == [
+            ("01:00", "02:00", 0),
+            ("02:00", "02:30", 2),
+            ("02:30", "03:00", 0),
+            ("03:00", "03:30", 3),
+            ("03:30", "05:00", 22),
+            ("05:00", "06:30", 33),
+            ("06:30", "07:00", 5),
+            ("07:00", "09:00", 7),
+            ("09:00", "18:00", 9),
+            ("18:00", "01:00", 18),
+        ]
+
+    def test_merge_timetables_2(self):
+        merged = Schedules.merge_timetables(
+            [
+                ("01:00", "03:00", 0),
+                ("03:00", "05:00", 3),
+                ("05:00", "07:00", 5),
+                ("07:00", "09:00", 7),
+                ("09:00", "18:00", 9),
+                ("18:00", "01:00", 18),
+            ],
+            [
+                ("03:00", "05:00", 2),
+                ("05:00", "09:00", "reset"),
+                ("09:00", "18:00", 22),
+                ("18:00", "18:30", 18),
+                ("18:30", "03:00", "reset"),
+            ],
+        )
+        assert merged == [
+            ("01:00", "03:00", 0),
+            ("03:00", "05:00", 2),
+            ("05:00", "07:00", 5),
+            ("07:00", "09:00", 7),
+            ("09:00", "18:00", 22),
+            ("18:00", "01:00", 18),
+        ]
+
+    def test_merge_timetables_3(self):
+        merged = Schedules.merge_timetables(
+            [("06:00", "12:00", 0), ("12:00", "23:00", 3), ("23:00", "06:00", 1)],
+            [
+                ("01:00", "02:00", 2),
+                ("02:00", "01:00", "reset"),
+            ],
+        )
+        assert merged == [
+            ("01:00", "02:00", 2),
+            ("02:00", "06:00", 1),
+            ("06:00", "12:00", 0),
+            ("12:00", "23:00", 3),
+            ("23:00", "01:00", 1),
+        ]

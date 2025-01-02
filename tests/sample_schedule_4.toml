@@ -1,0 +1,39 @@
+[metadata]
+name = "Schedule 4"
+var1 = "06:30"
+
+[[dining_room]]
+copy = "Schedule 2"
+var2 = "{var1|-00:15}"
+
+[[dining_room]]
+time = "{var1}"
+temperature = 25
+
+[[dining_room]]
+time = "{var1|+01:00}"
+temperature = "reset"
+
+[[dining_room]]
+time = "10:30"
+temperature = 7
+
+[[dining_room]]
+time = "10:45"
+temperature = 30
+
+[[dining_room]]
+time = "13:00"
+temperature = "reset"
+
+[[bathroom]]
+time = "23:30"
+temperature = 0
+
+[[bathroom]]
+time = "{var1}"
+temperature = 18
+
+[[living_room]]
+copy = ":bathroom"
+var1 = "{var1|+01:00}"
