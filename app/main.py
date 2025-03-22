@@ -1,3 +1,4 @@
+import logging
 from functools import lru_cache
 from typing import Optional, Mapping
 
@@ -13,16 +14,17 @@ from smart.tado import TadoClient, Presence
 
 class Settings(BaseSettings):
     api_key: str
-    tado_username: str
-    tado_password: str
     tado_data: str
     tado_default_schedule: str
     tado_env: Optional[str] = None
+    tado_oauth2_endpoint: Optional[str] = None
 
     model_config = SettingsConfigDict(env_file=".env")
 
 
 app = FastAPI()
+
+logger = logging.getLogger("uvicorn.error")
 
 api_key_header = APIKeyHeader(name="x-api-key", auto_error=False)
 
@@ -45,10 +47,10 @@ def get_settings():
 def get_client():
     settings = get_settings()
     client = TadoClient(
-        username=settings.tado_username,
-        password=settings.tado_password,
         data=settings.tado_data,
         env=settings.tado_env,
+        oauth2_endpoint=settings.tado_oauth2_endpoint,
+        logger=logger,
     )
     return client
 
