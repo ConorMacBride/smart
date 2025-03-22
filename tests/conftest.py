@@ -15,6 +15,10 @@ class EnvResponse:
 
 @pytest.fixture
 def tado_client():
+    return create_tado_client()
+
+
+def create_tado_client():
     env = "http://localhost:8080/webapp/env.js"
 
     def get_env(url):
@@ -26,10 +30,9 @@ def tado_client():
     requests_session = Mock()
     requests_session.get.side_effect = get_env
     client = TadoClient(
-        username="username",
-        password="password",
         data=".",
         env=env,
+        oauth2_endpoint="http://localhost:8080/oauth2",
         requests_session=requests_session,
     )
     client.requests_session = Mock()

@@ -17,11 +17,10 @@ from smart import __version__
 
 class Settings(BaseSettings):
     api_key: str = "test_api_key"
-    tado_username: str = "test_username"
-    tado_password: str = "test_password"
     tado_data: str = tempfile.mkdtemp()
     tado_default_schedule: str = "Schedule 2"
     tado_env: Optional[str] = "http://localhost:8080/webapp/env.js"
+    tado_oauth2_endpoint: Optional[str] = "http://localhost:8080/oauth2"
 
 
 @lru_cache
@@ -41,24 +40,6 @@ auth_resp = {
     "method": responses.GET,
     "url": "http://localhost:8080/webapp/env.js",
     "body": (Path(__file__).parent / "mock_env.js").read_text(),
-}
-
-token_resp = {
-    "method": responses.POST,
-    "url": "http://localhost:8080/oauth/token",
-    "match": (
-        responses.matchers.urlencoded_params_matcher(
-            {
-                "client_id": "test-web-app",
-                "grant_type": "password",
-                "scope": "home.user",
-                "username": "test_username",
-                "password": "test_password",
-                "client_secret": "client-secret",
-            }
-        ),
-    ),
-    "json": {"access_token": "access-token"},
 }
 
 home_id_resp = {
@@ -96,6 +77,9 @@ def setup_module():
         src = Path(__file__).parent / f"../sample_schedule_{i}.toml"
         dst = temp_dir / f"sample_schedule_{i}.toml"
         dst.write_text(src.read_text())
+    src = Path(__file__).parent / "../token.json"
+    dst = Path(get_test_settings().tado_data) / "token.json"
+    dst.write_text(src.read_text())
 
 
 class CommonTests:
@@ -120,7 +104,8 @@ class CommonTests:
 
     def teardown_method(self):
         for file in Path(get_test_settings().tado_data).glob("*.json"):
-            file.unlink()
+            if file.name != "token.json":
+                file.unlink()
 
 
 class TestRoot(CommonTests):
@@ -142,7 +127,6 @@ class TestHome(CommonTests):
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post(self):
         responses.add(**auth_resp)
-        responses.add(**token_resp)
         responses.add(**home_id_resp)
         responses.add(
             method=responses.PUT,
@@ -163,7 +147,6 @@ class TestHome(CommonTests):
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post_did_not_update_state(self):
         responses.add(**auth_resp)
-        responses.add(**token_resp)
         responses.add(**home_id_resp)
         responses.add(
             method=responses.PUT,
@@ -188,7 +171,6 @@ class TestAway(CommonTests):
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post(self):
         responses.add(**auth_resp)
-        responses.add(**token_resp)
         responses.add(**home_id_resp)
         responses.add(
             method=responses.PUT,
@@ -209,7 +191,6 @@ class TestAway(CommonTests):
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post_did_not_update_state(self):
         responses.add(**auth_resp)
-        responses.add(**token_resp)
         responses.add(**home_id_resp)
         responses.add(
             method=responses.PUT,
@@ -234,7 +215,6 @@ class TestScheduleReset(CommonTests):
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post(self):
         responses.add(**auth_resp)
-        responses.add(**token_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         responses.add(**active_timetable_resp)
@@ -334,7 +314,6 @@ class TestScheduleActive(CommonTests):
             '{"schedule": "My Schedule", "variables": {"var1": "value1"}}'
         )
         responses.add(**auth_resp)
-        responses.add(**token_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         response = client.get("/tado/schedule/active")
@@ -356,7 +335,6 @@ class TestScheduleAll(CommonTests):
             '{"var3": "14:00", "var4": "15:00"}'
         )
         responses.add(**auth_resp)
-        responses.add(**token_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         response = client.get("/tado/schedule/all")
@@ -386,7 +364,6 @@ class TestScheduleSet(CommonTests):
             '{"var3": "14:00", "var4": "15:00"}'
         )
         responses.add(**auth_resp)
-        responses.add(**token_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         responses.add(**active_timetable_resp)
@@ -520,7 +497,6 @@ class TestScheduleVariablesPost(CommonTests):
             )
         )
         responses.add(**auth_resp)
-        responses.add(**token_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         responses.add(**active_timetable_resp)
@@ -555,7 +531,6 @@ class TestScheduleVariablesPost(CommonTests):
             )
         )
         responses.add(**auth_resp)
-        responses.add(**token_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         response = client.post(

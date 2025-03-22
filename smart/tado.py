@@ -1,7 +1,11 @@
+import logging
+import os
+import time
 from functools import cached_property
 from pathlib import Path
 
 import requests
+from pydantic import BaseModel, field_validator
 
 
 class Presence:
@@ -10,20 +14,38 @@ class Presence:
     AWAY = "AWAY"
 
 
+class Token(BaseModel):
+    access_token: str
+    expires_in: int
+    refresh_token: str
+
+    @field_validator("expires_in", mode="before")
+    @classmethod
+    def set_expires_in(cls, raw):
+        if raw < 30_000_000:  # convert to Unix timestamp
+            return int(time.time()) + int(raw)
+        return raw
+
+
 class TadoClient:
-    def __init__(self, username, password, data, env=None, requests_session=None):
+    def __init__(
+        self, data, env=None, requests_session=None, oauth2_endpoint=None, logger=None
+    ):
         if env is None:
             env = "https://my.tado.com/webapp/env.js"
+        if oauth2_endpoint is None:
+            oauth2_endpoint = "https://login.tado.com/oauth2"
+        if logger is None:
+            logger = logging.getLogger(__name__)
         self.requests_session = requests_session or requests.Session()
-        self.username = username
-        self.password = password
+        self.logger = logger
         self.data = Path(data)
         self.env = env
-        self.oauth_endpoint = self.get_env("apiEndpoint")
-        self.client_id = self.get_env("clientId")
-        self.client_secret = self.get_env("clientSecret")
+        self.oauth2_endpoint = oauth2_endpoint
+        self.client_id = "1bb50063-6b0c-4d11-bd99-387f4a91cc46"
         self.v1_endpoint = self.get_env("tgaRestApiEndpoint")
         self.v2_endpoint = self.get_env("tgaRestApiV2Endpoint")
+        self._token = None
 
     @cached_property
     def _env(self):
@@ -46,25 +68,74 @@ class TadoClient:
         else:
             raise ValueError(f"Multiple `{key}` values found in environment.")
 
-    @cached_property
-    def access_token(self):
+    def _refresh_token(self, token: Token) -> Token:
         r = self.requests_session.post(
-            self.oauth_endpoint + "/token",
+            self.oauth2_endpoint + "/token",
             data={
                 "client_id": self.client_id,
-                "grant_type": "password",
-                "scope": "home.user",
-                "username": self.username,
-                "password": self.password,
-                "client_secret": self.client_secret,
+                "grant_type": "refresh_token",
+                "refresh_token": token.refresh_token,
             },
         )
         r.raise_for_status()
-        return r.json()["access_token"]
+        self.logger.log(logging.DEBUG, r.json())
+        self.logger.log(logging.INFO, "Token refreshed.")
+        return Token(**r.json())
+
+    def _authenticate(self) -> Token:
+        verify = self.requests_session.post(
+            self.oauth2_endpoint + "/device_authorize",
+            data={
+                "client_id": self.client_id,
+                "scope": "offline_access",
+            },
+        )
+        verify.raise_for_status()
+        self.logger.log(logging.DEBUG, verify.json())
+        self.logger.log(
+            logging.INFO,
+            f"Log in to tadoº: {verify.json()['verification_uri_complete']}",
+        )
+        start_time = time.time()
+        while time.time() - start_time < verify.json()["expires_in"]:
+            self.logger.log(logging.INFO, "Checking for token...")
+            r = self.requests_session.post(
+                self.oauth2_endpoint + "/token",
+                data={
+                    "client_id": self.client_id,
+                    "device_code": verify.json()["device_code"],
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                },
+            )
+            if r.status_code == 200:
+                self.logger.log(logging.DEBUG, r.json())
+                self.logger.log(logging.INFO, "Token received.")
+                return Token(**r.json())
+            time.sleep(verify.json()["interval"])
+        raise TimeoutError("Timed out waiting for token")
+
+    @property
+    def token(self):
+        token_path = self.data / "token.json"
+        if self._token is None:
+            try:
+                with token_path.open() as fp:
+                    self._token = Token.model_validate_json(fp.read())
+            except FileNotFoundError:
+                self._token = self._authenticate()
+                with token_path.open("w") as fp:
+                    os.chmod(token_path, 0o600)
+                    fp.write(self._token.model_dump_json())
+        if self._token.expires_in - time.time() < 60:
+            self._token = self._refresh_token(self._token)
+            with token_path.open("w") as fp:
+                os.chmod(token_path, 0o600)
+                fp.write(self._token.model_dump_json())
+        return self._token
 
     @property
     def auth(self):
-        return {"Authorization": f"Bearer {self.access_token}"}
+        return {"Authorization": f"Bearer {self.token.access_token}"}
 
     @cached_property
     def home_id(self):

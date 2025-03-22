@@ -96,17 +96,20 @@ temperature = 0
 Create a `.env` file at the root of this repository, e.g.:
 ```
 API_KEY=<generate your own api key for accessing your endpoints>
-TADO_USERNAME=yourname@example.com
-TADO_PASSWORD=YourTadoPassword
 TADO_DATA=/path/to/data
 TADO_DEFAULT_SCHEDULE="Winter Schedule"
 ```
 
-There is also an optional `TADO_ENV` that has a default value of `https://my.tado.com/webapp/env.js`.
+There is also an optional `TADO_ENV` that has a default value of `https://my.tado.com/webapp/env.js`
+and a `TADO_OAUTH2_ENDPOINT` that has a default value of `https://login.tado.com/oauth2`.
 
 ```
 uvicorn app.main:app
 ```
+
+To log in to tadoº, run any of the curl commands below (e.g., `/tado/schedule/all`) and navigate to the URL logged in the terminal.
+After logging in, a success message should be logged in the terminal and the curl command should return the configured schedules.
+To log out, delete the `token.json` file from the `TADO_DATA` directory.
 
 To make the API accessible outside the machine you are hosting it on, read the uvicorn documentation and elsewhere on how to specify the host and port.
 You must also consider hardening the security of your deployment (e.g., SSL keys, firewall rules, ...) to protect your endpoint, server and other devices within your home network.
