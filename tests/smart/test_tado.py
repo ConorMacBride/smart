@@ -1,7 +1,7 @@
 import logging
 import time
 from pathlib import Path
-from unittest.mock import patch, PropertyMock, call
+from unittest.mock import call
 
 import pytest
 
@@ -24,39 +24,14 @@ class HttpResponse:
 class TestTado:
     def test_setup_tado_client(self, tado_client):
         assert tado_client.data == Path(".")
-        assert tado_client.env == "http://localhost:8080/webapp/env.js"
         assert tado_client.oauth2_endpoint == "http://localhost:8080/oauth2"
         assert tado_client.client_id == "1bb50063-6b0c-4d11-bd99-387f4a91cc46"
-        assert tado_client.v1_endpoint == "http://localhost:8080/api/v1"
         assert tado_client.v2_endpoint == "http://localhost:8080/api/v2"
 
     def test_default_env(self):
-        with patch("smart.tado.TadoClient._env", new_callable=PropertyMock) as mock_env:
-            with (Path(__file__).parent.parent / "mock_env.txt").open() as fp:
-                mock_env.return_value = fp.read().strip()
-            tado_client = TadoClient(data=".")
-            assert tado_client.env == "https://my.tado.com/webapp/env.js"
-            assert tado_client.oauth2_endpoint == "https://login.tado.com/oauth2"
-
-    def test_get_env(self, tado_client):
-        with patch("smart.tado.TadoClient._env", new_callable=PropertyMock) as mock_env:
-            mock_env.return_value = "varA: 'val1',\nvarB: 'val2',\nvarC: 'val3',\nvarE: 'val5',\nvarE: 'val6',"
-
-            assert tado_client.get_env("varA") == "val1"
-            assert tado_client.get_env("varB") == "val2"
-            assert tado_client.get_env("varC") == "val3"
-
-            assert tado_client.get_env("varC", "val0") == "val3"
-            assert tado_client.get_env("varD", "val4") == "val4"
-
-            with pytest.raises(ValueError, match="not in environment"):
-                tado_client.get_env("varD")
-
-            with pytest.raises(ValueError, match="Multiple"):
-                tado_client.get_env("varE")
-
-            with pytest.raises(ValueError, match="Multiple"):
-                tado_client.get_env("varE", "val7")
+        tado_client = TadoClient(data=".")
+        assert tado_client.v2_endpoint == "https://my.tado.com/api/v2"
+        assert tado_client.oauth2_endpoint == "https://login.tado.com/oauth2"
 
     def test_auth(self, tado_client, tmp_path, caplog):
         tado_client.data = tmp_path / "data1"
@@ -196,11 +171,11 @@ class TestTado:
 
     def test_home_id(self, tado_client, mock_tado_auth):
         tado_client.requests_session.get.return_value = HttpResponse(
-            json={"homeId": "123"}
+            json={"homes": [{"id": "123"}]}
         )
         assert tado_client.home_id == "123"
         tado_client.requests_session.get.assert_called_once_with(
-            "http://localhost:8080/api/v1/me",
+            "http://localhost:8080/api/v2/me",
             headers={"Authorization": "Bearer access-token"},
         )
 

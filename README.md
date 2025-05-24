@@ -100,7 +100,7 @@ TADO_DATA=/path/to/data
 TADO_DEFAULT_SCHEDULE="Winter Schedule"
 ```
 
-There is also an optional `TADO_ENV` that has a default value of `https://my.tado.com/webapp/env.js`
+There is also an optional `TADO_API_ENDPOINT` that has a default value of `https://my.tado.com/api/v2`
 and a `TADO_OAUTH2_ENDPOINT` that has a default value of `https://login.tado.com/oauth2`.
 
 ```

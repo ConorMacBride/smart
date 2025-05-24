@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     api_key: str = "test_api_key"
     tado_data: str = tempfile.mkdtemp()
     tado_default_schedule: str = "Schedule 2"
-    tado_env: Optional[str] = "http://localhost:8080/webapp/env.js"
+    tado_api_endpoint: Optional[str] = "http://localhost:8081/api/v2"
     tado_oauth2_endpoint: Optional[str] = "http://localhost:8080/oauth2"
 
 
@@ -36,17 +36,11 @@ def default_session_fixture() -> Iterator[None]:
 
 client = TestClient(app, headers={"x-api-key": "test_api_key"})
 
-auth_resp = {
-    "method": responses.GET,
-    "url": "http://localhost:8080/webapp/env.js",
-    "body": (Path(__file__).parent / "mock_env.js").read_text(),
-}
-
 home_id_resp = {
     "method": responses.GET,
-    "url": "http://localhost:8081/api/v1/me",
+    "url": "http://localhost:8081/api/v2/me",
     "headers": {"Authorization": "Bearer access-token"},
-    "json": {"homeId": "123"},
+    "json": {"homes": [{"id": "123"}]},
 }
 
 zones_resp = {
@@ -126,7 +120,6 @@ class TestHome(CommonTests):
 
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post(self):
-        responses.add(**auth_resp)
         responses.add(**home_id_resp)
         responses.add(
             method=responses.PUT,
@@ -146,7 +139,6 @@ class TestHome(CommonTests):
 
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post_did_not_update_state(self):
-        responses.add(**auth_resp)
         responses.add(**home_id_resp)
         responses.add(
             method=responses.PUT,
@@ -170,7 +162,6 @@ class TestAway(CommonTests):
 
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post(self):
-        responses.add(**auth_resp)
         responses.add(**home_id_resp)
         responses.add(
             method=responses.PUT,
@@ -190,7 +181,6 @@ class TestAway(CommonTests):
 
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post_did_not_update_state(self):
-        responses.add(**auth_resp)
         responses.add(**home_id_resp)
         responses.add(
             method=responses.PUT,
@@ -214,7 +204,6 @@ class TestScheduleReset(CommonTests):
 
     @responses.activate(assert_all_requests_are_fired=True)
     def test_post(self):
-        responses.add(**auth_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         responses.add(**active_timetable_resp)
@@ -313,7 +302,6 @@ class TestScheduleActive(CommonTests):
         (Path(get_test_settings().tado_data) / "active_schedule.json").write_text(
             '{"schedule": "My Schedule", "variables": {"var1": "value1"}}'
         )
-        responses.add(**auth_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         response = client.get("/tado/schedule/active")
@@ -334,7 +322,6 @@ class TestScheduleAll(CommonTests):
         (Path(get_test_settings().tado_data) / "variables.json").write_text(
             '{"var3": "14:00", "var4": "15:00"}'
         )
-        responses.add(**auth_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         response = client.get("/tado/schedule/all")
@@ -363,7 +350,6 @@ class TestScheduleSet(CommonTests):
         (Path(get_test_settings().tado_data) / "variables.json").write_text(
             '{"var3": "14:00", "var4": "15:00"}'
         )
-        responses.add(**auth_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         responses.add(**active_timetable_resp)
@@ -468,7 +454,6 @@ class TestScheduleVariablesGet(CommonTests):
         (Path(get_test_settings().tado_data) / "variables.json").write_text(
             '{"sleep": "23:00", "wake": "07:00"}'
         )
-        responses.add(**auth_resp)
         response = client.get("/tado/schedule/variables")
         assert response.status_code == 200
         assert response.json() == {
@@ -496,7 +481,6 @@ class TestScheduleVariablesPost(CommonTests):
                 }
             )
         )
-        responses.add(**auth_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         responses.add(**active_timetable_resp)
@@ -530,7 +514,6 @@ class TestScheduleVariablesPost(CommonTests):
                 }
             )
         )
-        responses.add(**auth_resp)
         responses.add(**home_id_resp)
         responses.add(**zones_resp)
         response = client.post(
