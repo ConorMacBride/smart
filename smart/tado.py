@@ -29,10 +29,15 @@ class Token(BaseModel):
 
 class TadoClient:
     def __init__(
-        self, data, env=None, requests_session=None, oauth2_endpoint=None, logger=None
+        self,
+        data,
+        api_endpoint=None,
+        requests_session=None,
+        oauth2_endpoint=None,
+        logger=None,
     ):
-        if env is None:
-            env = "https://my.tado.com/webapp/env.js"
+        if api_endpoint is None:
+            api_endpoint = "https://my.tado.com/api/v2"
         if oauth2_endpoint is None:
             oauth2_endpoint = "https://login.tado.com/oauth2"
         if logger is None:
@@ -40,33 +45,10 @@ class TadoClient:
         self.requests_session = requests_session or requests.Session()
         self.logger = logger
         self.data = Path(data)
-        self.env = env
         self.oauth2_endpoint = oauth2_endpoint
         self.client_id = "1bb50063-6b0c-4d11-bd99-387f4a91cc46"
-        self.v1_endpoint = self.get_env("tgaRestApiEndpoint")
-        self.v2_endpoint = self.get_env("tgaRestApiV2Endpoint")
+        self.v2_endpoint = api_endpoint
         self._token = None
-
-    @cached_property
-    def _env(self):
-        env = self.requests_session.get(url=self.env)
-        return env.text
-
-    def get_env(self, key, value=None):
-        values = list(
-            filter(
-                lambda x: key in x.strip(),
-                self._env.split("\n"),
-            )
-        )
-        if len(values) == 0:
-            if value is not None:
-                return value
-            raise ValueError(f"`{key}` not in environment.")
-        elif len(values) == 1:
-            return values[0].split("'")[-2]
-        else:
-            raise ValueError(f"Multiple `{key}` values found in environment.")
 
     def _refresh_token(self, token: Token) -> Token:
         r = self.requests_session.post(
@@ -139,9 +121,9 @@ class TadoClient:
 
     @cached_property
     def home_id(self):
-        r = self.requests_session.get(self.v1_endpoint + "/me", headers={**self.auth})
+        r = self.requests_session.get(self.v2_endpoint + "/me", headers={**self.auth})
         r.raise_for_status()
-        return r.json()["homeId"]
+        return r.json()["homes"][0]["id"]
 
     @cached_property
     def zones(self):

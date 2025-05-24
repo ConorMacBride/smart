@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     api_key: str
     tado_data: str
     tado_default_schedule: str
-    tado_env: Optional[str] = None
+    tado_api_endpoint: Optional[str] = None
     tado_oauth2_endpoint: Optional[str] = None
 
     model_config = SettingsConfigDict(env_file=".env")
@@ -48,7 +48,7 @@ def get_client():
     settings = get_settings()
     client = TadoClient(
         data=settings.tado_data,
-        env=settings.tado_env,
+        api_endpoint=settings.tado_api_endpoint,
         oauth2_endpoint=settings.tado_oauth2_endpoint,
         logger=logger,
     )

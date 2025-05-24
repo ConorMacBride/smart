@@ -8,30 +8,16 @@ from smart.schedule import Schedule
 from smart.tado import TadoClient
 
 
-class EnvResponse:
-    def __init__(self, text):
-        self.text = text
-
-
 @pytest.fixture
 def tado_client():
     return create_tado_client()
 
 
 def create_tado_client():
-    env = "http://localhost:8080/webapp/env.js"
-
-    def get_env(url):
-        assert url == env
-        with (Path(__file__).parent / "mock_env.txt").open() as fp:
-            text = fp.read().strip()
-        return EnvResponse(text=text)
-
     requests_session = Mock()
-    requests_session.get.side_effect = get_env
     client = TadoClient(
         data=".",
-        env=env,
+        api_endpoint="http://localhost:8080/api/v2",
         oauth2_endpoint="http://localhost:8080/oauth2",
         requests_session=requests_session,
     )

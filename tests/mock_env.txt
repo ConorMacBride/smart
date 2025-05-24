@@ -1,6 +1,0 @@
-var TD = {
-	config: {
-		tgaRestApiEndpoint: 'http://localhost:8080/api/v1',
-		tgaRestApiV2Endpoint: 'http://localhost:8080/api/v2'
-	}
-};
